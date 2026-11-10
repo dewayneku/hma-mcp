@@ -1,0 +1,3 @@
+[submodule "external/HexManiacAdvance"]
+	path = external/HexManiacAdvance
+	url = https://github.com/haven1433/HexManiacAdvance.git

@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Builds HexManiacAdvance's core library straight from the git submodule.
+    HMA's own csproj resolves paths from $(SolutionDir), which only works inside HMA's solution,
+    so this project compiles the same sources with the same settings and packages instead.
+  -->
+  <PropertyGroup>
+    <HmaCore>$(MSBuildThisFileDirectory)..\..\external\HexManiacAdvance\src\HexManiac.Core\</HmaCore>
+    <TargetFramework>net6.0</TargetFramework>
+    <CheckEolTargetFramework>false</CheckEolTargetFramework>
+    <AssemblyName>HexManiac.Core</AssemblyName>
+    <RootNamespace>HavenSoft.HexManiac.Core</RootNamespace>
+    <EnableDefaultItems>false</EnableDefaultItems>
+    <ImplicitUsings>false</ImplicitUsings>
+    <Nullable>annotations</Nullable>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <NoWarn>$(NoWarn);1591;1701;1702;8034;0067;1573;0108;0659;CS8632;CS0618;SYSLIB0011;SYSLIB0014;CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(HmaCore)**\*.cs" Exclude="$(HmaCore)bin\**;$(HmaCore)obj\**" />
+    <Compile Include="$(HmaCore)..\SharedAssemblyInfo.cs" Link="SharedAssemblyInfo.cs" />
+  </ItemGroup>
+
+  <!-- HMA reads its reference data from ./resources at runtime (the WPF app ships it the same way). -->
+  <ItemGroup>
+    <None Include="$(HmaCore)Models\Code\*.toml;$(HmaCore)Models\Code\*.txt;$(HmaCore)Models\Code\*.md;$(HmaCore)Models\Code\*.py;$(HmaCore)Models\Code\*.hma"
+          Link="resources\%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Crc32.NET" Version="1.2.0" />
+    <PackageReference Include="DynamicLanguageRuntime" Version="1.3.3" />
+    <PackageReference Include="IronPython" Version="3.4.0" />
+    <PackageReference Include="IronPython.StdLib" Version="3.4.0" />
+  </ItemGroup>
+</Project>
