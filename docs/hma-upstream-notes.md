@@ -1,43 +1,59 @@
 # HMA upstream notes
 
-Issues in [HexManiacAdvance](https://github.com/haven1433/HexManiacAdvance) found while building hma-mcp, with suggested fixes. Each could become an issue or PR upstream. Entries are against the pinned submodule commit (`c8de1e8a`, 2026-08-30).
+Issues in [HexManiacAdvance](https://github.com/haven1433/HexManiacAdvance) found while building hma-mcp, with fixes. Entries are against upstream `master` at `c8de1e8a` (2026-08-30), which is also the pinned submodule commit.
 
-Status: **open** = not yet reported · **reported** = issue/PR filed (link it) · **fixed** = merged upstream.
+Status: **open** = not yet worked on · **fixed locally** = a fix branch exists in `external/HexManiacAdvance`, not pushed anywhere · **reported** = issue/PR filed (link it) · **merged** = in upstream.
+
+Each fix is on its own branch off `master`, so it can become a small, separate PR. `local/all-fixes` merges all four, for testing together.
+
+## How fixes are verified
+
+- HMA's own test suite, with a FireRed (U) 1.0 ROM at `artifacts/HexManiac.Tests/bin/Debug/net6.0/sampleFiles/Pokemon FireRed.gba` (git-ignored). Baseline on upstream `master`: **1633 passed, 16 failed, 921 skipped**. Every fix branch and the combined branch give the same 16 failures and no new ones.
+- A targeted check for each fix (below), run both with and without the fix.
+- hma-mcp's own `tests/smoke.py`, built against `local/all-fixes`: all checks pass.
 
 ---
 
-### 1. `HexManiac.Core` can't be referenced from outside HMA's own solution (open)
-**Where:** `src/HexManiac.Core/HexManiac.Core.csproj`, `src/Directory.Build.props`
-**Problem:** Paths are built from `$(SolutionDir)`, including `SharedAssemblyInfo.cs`, the output folders, and the `AutoImplement` tool path. Referenced from any other solution, or built on its own, `$(SolutionDir)` is wrong or empty, and restore and build fail. Tools, plugins, and test harnesses can't build on HMA's core. hma-mcp works around this with its own wrapper project, `src/HexManiac.Core.Build`.
-**Fix:** Use `$(MSBuildThisFileDirectory)`-relative paths. Optionally also publish `HexManiac.Core` as a NuGet package.
-**Size:** small, low risk.
+### 1. Doesn't compile on .NET 8+, and .NET 6 is end-of-life: fixed locally
+**Branch:** `fix/net8-ascii-ambiguity` (`a8682bb9`). 4 files, +4 lines.
+**Problem:** .NET 8 added `System.Text.Ascii`, so `DataFormats.Ascii` is ambiguous (CS0104) in files that also import `System.Text`. HMA targets `net6.0`, which went out of support in November 2024.
+**Fix:** `using Ascii = HavenSoft.HexManiac.Core.ViewModels.DataFormats.Ascii;` in `AsciiRun.cs`, `ViewPort.cs`, `ContextItemFactory.cs` and `ToolTipContentVisitor.cs`. No behavior change.
+**Verified:** HexManiac.Core now compiles for `net8.0`; it failed before. The actual retarget to net8 is left to the maintainers: it touches WPF, the installer and CI.
 
-### 2. Doesn't compile on .NET 8+, and .NET 6 is end-of-life (open)
-**Where:** `ViewModels/Visitors/ContextItemFactory.cs:219`, `ViewModels/Visitors/ToolTipContentVisitor.cs:95`
-**Problem:** .NET 8 added `System.Text.Ascii`, which makes HMA's `DataFormats.Ascii` ambiguous (CS0104). HMA still targets `net6.0`, which went out of support in November 2024, so users run an unpatched runtime.
-**Fix:** Qualify the name or add an alias (`using Ascii = HavenSoft.HexManiac.Core.ViewModels.DataFormats.Ascii;`) in those two files, then retarget to `net8.0`.
-**Size:** small. The retarget needs a full test pass.
+### 2. Projects can't be built on their own or referenced from another solution: fixed locally
+**Branch:** `fix/build-without-solutiondir` (`a4bfe151`). 5 project files.
+**Problem:** Paths were built from `$(SolutionDir)`, which is empty or wrong outside HMA's solution, so restore and build failed. Worse, `dotnet build src/HexManiac.Tests` on master writes its output **inside the project folder** (`src/HexManiac.Tests/artifacts/`). The next full solution build then compiles those generated files and fails with `CS0579 Duplicate TargetFrameworkAttribute` until they're deleted by hand. This happened during this work.
+**Fix:** Define `HmaRepoRoot` once in `src/Directory.Build.props` from that file's own location (`$([MSBuild]::NormalizeDirectory(...))`) and use it instead of `$(SolutionDir)`. The output layout is unchanged.
+**Verified:** the solution builds; `dotnet build src/HexManiac.Core` builds on its own; and a separate solution referencing `HexManiac.Core.csproj` builds and runs. On master, the last two fail.
 
-### 3. Reference data is loaded relative to the working directory (open)
-**Where:** `Models/Singletons.cs:22-31`, `Models/PCSString.cs:65`, `Models/IDataModel.cs:205-211`
-**Problem:** Paths like `"resources/tableReference.txt"` resolve against the process's current directory, not the app's folder. If HMA starts from a different working directory (a shortcut with a different "Start in", a command line, another program hosting the core), the reference tables, scripts, and constants fail to load. hma-mcp works around this by changing directory at startup.
-**Fix:** Build the paths from `AppContext.BaseDirectory`.
-**Size:** small.
+### 3. Starting HMA from another folder crashes it: fixed locally
+**Branch:** `fix/resources-relative-to-app` (`ab690341`). New `Models/ResourcePath.cs` plus 6 files.
+**Problem:** Reference data (`resources/*.txt`, `*.toml`, `hma.py`, …) was opened relative to the process's current directory. If HMA starts from any other folder (a shortcut with a different "Start in", a command line, another program hosting HexManiac.Core), `new Singletons()` throws `DirectoryNotFoundException: ...\resources\hma.py`.
+**Fix:** `ResourcePath.Get("resources/...")` resolves against `AppContext.BaseDirectory`, and falls back to the old relative path when the file isn't there.
+**Verified:** a test program started from `C:\Users\dewayne` crashes on master. With the fix, it loads all 10 game reference tables and 323 script commands.
 
-### 4. Setting an enum field to an invalid name silently does nothing (open)
-**Where:** `Models/ModelTable.cs` (`ModelArrayElement.SetEnumValue`)
-**Problem:** `SetEnumValue("type1", "NOTATYPE")` doesn't change anything and doesn't report an error. HMA's own Python automation uses this API (`element["type1"] = "FIER"`), so a typo in a script silently skips the edit.
-**Fix:** Throw an exception (or return `false`) that names the closest valid options. hma-mcp now validates with `ArrayRunEnumSegment.TryParse` first.
-**Size:** small. Check any callers that rely on the silent behavior.
+### 4. Invalid enum names silently do nothing: fixed locally
+**Branch:** `fix/set-enum-value-invalid-name` (`32f05132`). `ModelTable.cs` plus 2 new tests in `TableTests.cs`.
+**Problem:** `ModelArrayElement.SetEnumValue` skipped the write when the name didn't match. It backs `element["type1"] = "FIRE"` in HMA's Python automation, so a typo skips the edit with no message.
+**Fix:** Throw an `ArgumentException` that names the field and suggests close matches.
+**Verified:** the new test `EnumField_SetInvalidName_ThrowsAndLeavesDataUnchanged` fails on master and passes with the fix; `EnumField_SetValidName_WritesValue` passes on both.
 
-### 5. One script edit can take several undo steps (open, verify in GUI)
-**Where:** `ViewModels/Tools/CodeTool.cs` (`CompileScriptChanges` calls `history.InsertCustomChange`), `ViewModels/ChangeHistory.cs`
-**Problem:** Compiling a script that grows records at least two history entries: a format-only change and the data change. In hma-mcp, one undo restored only part of a relocated script, which left the old location filled with `FF` bytes. The GUI likely needs several Ctrl+Z presses for one script edit. Also, `InsertCustomChange` throws inside `ContinueCurrentTransaction()`, so callers can't group the steps themselves, and there's no public undo-depth or grouping API. hma-mcp reads the private `undoStack` through reflection.
-**Fix:** Let `InsertCustomChange` join the current transaction, or add a public `BeginGroup()`/`EndGroup()` API.
-**Size:** medium. Reproduce in the GUI first.
+### 5. A script edit that has to move the script takes two undos: reproduced, open
+**Branch:** `repro/script-relocate-undo` (`7efe275b`). One test, which **currently fails**.
+**Where:** `ViewModels/Tools/CodeTool.cs` (`CompileScriptChanges` inserts a separate format-only history entry with `history.InsertCustomChange`), `ViewModels/ChangeHistory.cs`.
+**Problem:** Typing a longer script in the code tool moves it to free space and updates its pointers. The first Ctrl+Z reverts only the content: the *original* script stays at the new address, with the pointers still aimed there. A second Ctrl+Z puts it back where it was. The ROM is valid after the first undo (not corrupt), but the result is surprising, and a user who saves then keeps the moved copy.
+**Fix idea:** Make the repoint and the compile one history entry: let `InsertCustomChange` join an open `ContinueCurrentTransaction()` (today it throws), or add a public `BeginGroup()`/`EndGroup()`. This changes undo behavior, so it's better raised as an issue with the repro test than sent straight as a PR.
+**hma-mcp workaround:** each tool call is one undo group (reads the private `undoStack` through reflection).
 
-### 6. Script compile and repoint logic lives in the editor view-model (open)
+### 6. Script compile and repoint logic lives in the editor view-model: open
 **Where:** `ViewModels/Tools/CodeTool.cs` (`CompileScriptChanges`)
-**Problem:** Compile → expand → relocate → write → reformat → keep orphans is the most valuable logic for automation, but it's tied to `CodeBody`, the selection, and the editor caret. Python scripts and other tools can't call it, so hma-mcp keeps its own copy in `ScriptTools.Compile`, which can drift out of date.
-**Fix:** Move it into a model-level service, such as `ScriptParser.CompileAndWrite(model, token, address, text)`, that `CodeTool` calls. HMA's Python tool would gain safe script editing too.
+**Problem:** Compile → expand → relocate → write → reformat → keep orphans is the most useful logic for automation, but it's tied to `CodeBody`, the selection, and the editor caret. Python scripts and other tools can't call it; hma-mcp keeps its own copy in `ScriptTools.Compile`.
+**Fix:** Move it into a model-level service, e.g. `ScriptParser.CompileAndWrite(model, token, address, text)`, that `CodeTool` calls. This would also be the natural place to fix #5.
 **Size:** medium refactor. High value.
+
+---
+
+## Not yet investigated
+
+- **16 tests fail on upstream master**, mostly trainer-team and table-stream tests (`TableTests.ChangePokemonCount…`, `TrainerTeamTests.*`, with NullReferenceException in `TableTool.DataForCurrentRunChanged`). They fail with or without a ROM. This machine has only the .NET 8 runtime, so the tests ran on net8 through roll-forward. They might pass on a real .NET 6 runtime; check that before reporting. The upstream `failing-tests` branch may be related.
+- **Tuple enum fields fuzzy-match silently** (`ModelTupleElement.TryConvertEnumTextToValue` takes the best fuzzy match). This is the same kind of problem as #4, but it may be intentional.
