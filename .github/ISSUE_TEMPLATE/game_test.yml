@@ -1,0 +1,30 @@
+name: Game test report
+description: Tell us how hma-mcp worked with a game or hack
+labels: [game-support]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        hma-mcp is tested end to end on FireRed (U) 1.0. Reports for other games and hacks help everyone. **Don't attach or link ROMs.**
+  - type: input
+    id: game
+    attributes:
+      label: Game code
+      description: From `rom_info`, e.g. BPEE0. Name the hack if it is one.
+    validations:
+      required: true
+  - type: checkboxes
+    id: worked
+    attributes:
+      label: What worked
+      options:
+        - label: open_rom / rom_info
+        - label: list_anchors / describe_table / read_table
+        - label: write_table_field
+        - label: decompile_script / compile_script
+        - label: save, then reopened in HMA without problems
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Anything that failed or looked wrong, with the tool call.

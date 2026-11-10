@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: HexManiacAdvance issues
+    url: https://github.com/haven1433/HexManiacAdvance/issues
+    about: Problems in the HMA editor itself (not in hma-mcp) belong there.

@@ -1,0 +1,44 @@
+name: Bug report
+description: Something hma-mcp did wrong
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Please don't attach or link ROMs.** The game code, an anchor or address, and the tool call are enough to reproduce most problems.
+  - type: input
+    id: game
+    attributes:
+      label: Game code
+      description: From `rom_info`, e.g. BPRE0 (FireRed 1.0), BPEE0 (Emerald). Say if it's a hack, and which one.
+    validations:
+      required: true
+  - type: textarea
+    id: call
+    attributes:
+      label: Tool call
+      description: The tool and arguments, e.g. write_table_field table=data.pokemon.stats row=CHARMANDER field=type2 value=DRAGON
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: hma-mcp version / commit
+      description: "`git rev-parse --short HEAD` in your clone"
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS
+      options: [Windows, Linux, macOS]
+  - type: dropdown
+    id: client
+    attributes:
+      label: MCP client
+      options: [Claude Code, Claude Desktop, Other]

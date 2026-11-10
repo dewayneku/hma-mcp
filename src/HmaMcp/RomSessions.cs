@@ -104,7 +104,7 @@ public sealed class RomSessions {
       sees the same anchors. Every edit tool is one undo step (undo / redo).
 
       Addresses are ROM offsets in hex (ABCDEF, 0xABCDEF or 0x08ABCDEF all work) or HMA anchor names
-      such as data.pokemon.stats or scripts.newgame.names. Prefer anchors: they survive repoints.
+      such as data.pokemon.stats or scripts.newgame.setflags. Prefer anchors: they survive repoints.
       Before editing, read the current values first and tell the user what will change.
       """;
 
