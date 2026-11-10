@@ -106,7 +106,7 @@ public static class DataTools {
       [Description("Table anchor or address")] string table,
       [Description("Row index, or the row's name for named tables (e.g. 'CHARMANDER')")] string row,
       [Description("Field name from describe_table")] string field,
-      [Description("New value")] string value) => sessions.With(s => {
+      [Description("New value")] string value) => sessions.Edit(s => {
       var run = GetTable(s, table);
       var model = new ModelTable(s.Model, run, () => s.Token);
       var index = ResolveRow(run, row);
@@ -115,9 +115,14 @@ public static class DataTools {
          ?? throw new McpException($"Table has no field '{field}'. Fields: {string.Join(", ", run.ElementContent.Select(f => f.Name))}");
       var before = ReadField(s, run, index, seg, element);
 
-      try {
-         if (seg is ArrayRunEnumSegment) {
-            if (TryParseInt(value, out var n)) element.SetValue(field, n); else element.SetEnumValue(field, value);
+      {
+         if (seg is ArrayRunEnumSegment enumSeg) {
+            if (!TryParseInt(value, out var n) && !ArrayRunEnumSegment.TryParse(enumSeg.EnumName, s.Model, value, out n)) {
+               var close = enumSeg.GetBestOptions(s.Model, value).Take(8).ToList();
+               if (close.Count == 0) close = enumSeg.GetOptions(s.Model).Take(20).ToList();
+               throw new McpException($"'{value}' is not a valid {enumSeg.EnumName} value. Closest matches: {string.Join(", ", close)}");
+            }
+            element.SetValue(field, n);
          } else if (seg.Type == ElementContentType.Pointer) {
             if (value.StartsWith('@')) element.SetAddress(field, s.ResolveAddress(value[1..]));
             else element.SetStringValue(field, value);
@@ -129,8 +134,6 @@ public static class DataTools {
          } else {
             throw new McpException($"Field '{field}' is a {SegmentType(seg)} field; edit it with hma_edit for now.");
          }
-      } finally {
-         s.Commit();
       }
 
       // re-read from the (possibly relocated) table
@@ -156,7 +159,7 @@ public static class DataTools {
    [McpServerTool(Name = "write_bytes", Destructive = true), Description("Write raw bytes (hex string like 'FF 00 1A' or 'FF001A'). Low level: does not update HMA's formats or repoint anything. Prefer write_table_field, compile_script or hma_edit.")]
    public static string WriteBytes(RomSessions sessions,
       [Description("Anchor or hex address")] string address,
-      [Description("Hex bytes")] string hex) => sessions.With(s => {
+      [Description("Hex bytes")] string hex) => sessions.Edit(s => {
       var start = s.ResolveAddress(address);
       var clean = new string(hex.Where(Uri.IsHexDigit).ToArray());
       if (clean.Length == 0 || clean.Length % 2 != 0) throw new McpException("hex must be an even number of hex digits.");
@@ -164,7 +167,6 @@ public static class DataTools {
       if (start + bytes.Length > s.Model.Count) throw new McpException("Write would run past the end of the ROM.");
       var before = string.Join(" ", bytes.Select((_, i) => s.Model[start + i].ToString("X2")));
       s.Token.ChangeData(s.Model, start, bytes);
-      s.Commit();
       return Json.Of(new { address = start.ToAddress(), length = bytes.Length, before, after = string.Join(" ", bytes.Select(b => b.ToString("X2"))) });
    });
 
@@ -181,11 +183,10 @@ public static class DataTools {
    [McpServerTool(Name = "hma_edit", Destructive = true), Description("Type text into HMA's hex view at an address, exactly like typing in the editor. Supports HMA's full edit language: '^anchor.name`format`' to create anchors/tables, '<ABCDEF>' pointers, '\"text\"' strings, plain hex bytes, and table cell values separated by spaces. One undo step.")]
    public static string HmaEdit(RomSessions sessions,
       [Description("Anchor or hex address to start typing at")] string address,
-      [Description("Text to type, as you would in HMA")] string text) => sessions.With(s => {
+      [Description("Text to type, as you would in HMA")] string text) => sessions.Edit(s => {
       var start = s.ResolveAddress(address);
       s.ViewPort.Goto.Execute(start);
       s.ViewPort.Edit(text);
-      s.Commit();
       var run = s.Model.GetNextRun(start);
       return Json.Of(new {
          address = start.ToAddress(),

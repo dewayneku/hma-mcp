@@ -90,3 +90,13 @@ This tool does not include, download, or distribute any ROMs. Use it with ROMs y
 ## License
 
 MIT; see [LICENSE](LICENSE).
+
+## Testing
+
+```bash
+python tests/smoke.py src/HmaMcp/bin/Release/net8.0/hma-mcp.exe path/to/your/firered.gba
+```
+
+The script copies your ROM into a temp folder and edits only the copy. It checks reads, writes, enum validation, undo and redo, script decompile and compile (including a script that has to move to free space), `hma_edit`, and a save and reopen round-trip. It's written against FireRed (U) 1.0.
+
+Issues found in HMA itself while building this are tracked in [docs/hma-upstream-notes.md](docs/hma-upstream-notes.md).

@@ -60,16 +60,16 @@ public static class RomTools {
 
    [McpServerTool(Name = "undo"), Description("Undo the last edit (each edit tool call is one step).")]
    public static string Undo(RomSessions sessions) => sessions.With(s => {
-      if (!s.History.Undo.CanExecute(null)) throw new McpException("Nothing to undo.");
-      s.History.Undo.Execute(null);
-      return Json.Of(new { undone = true, can_undo = s.History.Undo.CanExecute(null), unsaved_changes = !s.History.IsSaved });
+      if (!s.CanUndo) throw new McpException("Nothing to undo.");
+      s.Undo();
+      return Json.Of(new { undone = true, can_undo = s.CanUndo, unsaved_changes = !s.History.IsSaved });
    });
 
    [McpServerTool(Name = "redo"), Description("Redo the last undone edit.")]
    public static string Redo(RomSessions sessions) => sessions.With(s => {
-      if (!s.History.Redo.CanExecute(null)) throw new McpException("Nothing to redo.");
-      s.History.Redo.Execute(null);
-      return Json.Of(new { redone = true, can_redo = s.History.Redo.CanExecute(null), unsaved_changes = !s.History.IsSaved });
+      if (!s.CanRedo) throw new McpException("Nothing to redo.");
+      s.Redo();
+      return Json.Of(new { redone = true, can_redo = s.CanRedo, unsaved_changes = !s.History.IsSaved });
    });
 
    [McpServerTool(Name = "close_rom"), Description("Close the open ROM. Fails if there are unsaved changes unless discard_unsaved is true.")]

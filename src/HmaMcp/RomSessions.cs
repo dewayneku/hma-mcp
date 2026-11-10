@@ -55,8 +55,41 @@ public sealed class RomSession {
       return string.IsNullOrEmpty(name) ? "" : name;
    }
 
-   /// <summary>Close out the current change so it becomes one undo step.</summary>
-   public void Commit() => History.ChangeCompleted();
+   // HMA's history can record one logical edit as several steps (e.g. a script compile inserts a
+   // separate format-only step). Each tool call is one "edit group" so undo/redo act per tool call.
+   readonly Stack<int> undoGroups = new(), redoGroups = new();
+   static readonly System.Reflection.FieldInfo UndoStackField =
+      typeof(ChangeHistory<ModelDelta>).GetField("undoStack", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+      ?? throw new InvalidOperationException("HMA's ChangeHistory no longer has an undoStack field; update RomSession.Edit.");
+   int UndoDepth => ((System.Collections.ICollection)UndoStackField.GetValue(History)!).Count;
+
+   /// <summary>Run an edit and record everything it changed as one undo step.</summary>
+   public T Edit<T>(Func<T> body) {
+      History.ChangeCompleted();
+      var depth = UndoDepth;
+      try {
+         return body();
+      } finally {
+         History.ChangeCompleted();
+         var steps = UndoDepth - depth;
+         if (steps > 0) { undoGroups.Push(steps); redoGroups.Clear(); }
+      }
+   }
+
+   public bool CanUndo => undoGroups.Count > 0;
+   public bool CanRedo => redoGroups.Count > 0;
+
+   public void Undo() {
+      var steps = undoGroups.Pop();
+      for (int i = 0; i < steps; i++) History.Undo.Execute(null);
+      redoGroups.Push(steps);
+   }
+
+   public void Redo() {
+      var steps = redoGroups.Pop();
+      for (int i = 0; i < steps; i++) History.Redo.Execute(null);
+      undoGroups.Push(steps);
+   }
 }
 
 public sealed class RomSessions {
@@ -86,7 +119,8 @@ public sealed class RomSessions {
       }
    }
 
-   public T Lock<T>(Func<T> action) { lock (gate) return action(); }
+   /// <summary>Like With, but everything the action changes becomes a single undo step.</summary>
+   public T Edit<T>(Func<RomSession, T> action) => With(s => s.Edit(() => action(s)));
 
    public RomSession? Current { get { lock (gate) return current; } }
 

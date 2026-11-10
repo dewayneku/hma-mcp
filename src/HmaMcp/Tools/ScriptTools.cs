@@ -30,22 +30,18 @@ public static class ScriptTools {
    public static string CompileScript(RomSessions sessions,
       [Description("Anchor or hex address of the script to replace")] string address,
       [Description("Full script text, in the form decompile_script returns")] string script,
-      [Description(KindHelp)] string kind = "event") => sessions.With(s => {
+      [Description(KindHelp)] string kind = "event") => sessions.Edit(s => {
       var start = s.ResolveAddress(address);
       var parser = Parser(s, kind);
       var errors = new List<string>();
       void OnError(object? sender, ScriptErrorInfo e) => errors.Add(e.Message);
-      try {
-         using (ModelCacheScope.CreateScope(s.Model)) {
-            return kind.ToLowerInvariant() switch {
-               "battle" => Compile<BSERun>(s, parser, start, script, errors, OnError),
-               "animation" => Compile<ASERun>(s, parser, start, script, errors, OnError),
-               "trainer_ai" or "ai" => Compile<TSERun>(s, parser, start, script, errors, OnError),
-               _ => Compile<XSERun>(s, parser, start, script, errors, OnError),
-            };
-         }
-      } finally {
-         s.Commit();
+      using (ModelCacheScope.CreateScope(s.Model)) {
+         return kind.ToLowerInvariant() switch {
+            "battle" => Compile<BSERun>(s, parser, start, script, errors, OnError),
+            "animation" => Compile<ASERun>(s, parser, start, script, errors, OnError),
+            "trainer_ai" or "ai" => Compile<TSERun>(s, parser, start, script, errors, OnError),
+            _ => Compile<XSERun>(s, parser, start, script, errors, OnError),
+         };
       }
    });
 
