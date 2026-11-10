@@ -38,16 +38,20 @@ Requires the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) (Win
 ```bash
 git clone --recurse-submodules https://github.com/dewayneku/hma-mcp.git
 cd hma-mcp
-dotnet build src/HmaMcp -c Release
+dotnet publish src/HmaMcp -c Release -o ~/.local/share/hma-mcp
 ```
 
-The server is `src/HmaMcp/bin/Release/net8.0/hma-mcp` (`hma-mcp.exe` on Windows). Keep the `resources/` folder next to it: it holds HMA's game reference data.
+On Windows, publishing to `%LOCALAPPDATA%\hma-mcp` works well. Publish to a folder outside the repo: an MCP client keeps the server running, and on Windows a running `.exe` can't be overwritten, so pointing clients at `bin/` breaks your next build. The published folder has `hma-mcp` (`hma-mcp.exe` on Windows) and a `resources/` folder with HMA's game reference data. Keep them together.
+
+To update, pull, close your MCP client (or restart its session), and run the same `publish` command again.
 
 ### Claude Code
 
 ```bash
-claude mcp add hma -- "C:/path/to/hma-mcp/src/HmaMcp/bin/Release/net8.0/hma-mcp.exe"
+claude mcp add --scope user hma -- "C:/Users/you/AppData/Local/hma-mcp/hma-mcp.exe"
 ```
+
+`--scope user` makes it available in every project folder. Start a new session afterwards; servers load when a session starts.
 
 ### Claude Desktop / other clients
 
@@ -55,7 +59,7 @@ claude mcp add hma -- "C:/path/to/hma-mcp/src/HmaMcp/bin/Release/net8.0/hma-mcp.
 {
   "mcpServers": {
     "hma": {
-      "command": "C:/path/to/hma-mcp/src/HmaMcp/bin/Release/net8.0/hma-mcp.exe"
+      "command": "C:/Users/you/AppData/Local/hma-mcp/hma-mcp.exe"
     }
   }
 }
