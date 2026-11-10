@@ -13,17 +13,33 @@ import tempfile
 
 from mcp_client import McpClient
 
-exe = sys.argv[1]
+exe = os.path.abspath(sys.argv[1])
 source_rom = sys.argv[2] if len(sys.argv) > 2 else None
 
 c = McpClient(exe)
 print("server:", c.server_info)
 names = [t["name"] for t in c.tools()]
 print(len(names), "tools:", ", ".join(names), "\n")
+expected = {"open_rom", "rom_info", "save", "undo", "redo", "close_rom", "list_anchors", "resolve",
+            "describe_table", "read_table", "write_table_field", "read_bytes", "write_bytes",
+            "find_free_space", "hma_edit", "decompile_script", "compile_script"}
+assert expected <= set(names), f"missing tools: {expected - set(names)}"
 c.call("rom_info", expect_error=True)
 
 if not source_rom:
+    # No real ROM: open a blank one. That still makes HMA load all of its reference data
+    # (resources/*.txt, *.toml), which is what breaks first on a new OS or install layout.
+    blank_dir = tempfile.mkdtemp(prefix="hma-mcp-blank-")
+    blank = os.path.join(blank_dir, "blank.gba")
+    with open(blank, "wb") as f:
+        f.write(b"\xff" * 0x100000)
+    info = c.call("open_rom", path=blank)
+    assert info["size"] == "0x100000", info
+    c.call("find_free_space", length=16)
+    c.call("decompile_script", address="0", kind="event")  # needs the script reference tables
     c.close()
+    shutil.rmtree(blank_dir)
+    print("NO-ROM CHECKS PASSED")
     sys.exit(0)
 
 work = tempfile.mkdtemp(prefix="hma-mcp-test-")
