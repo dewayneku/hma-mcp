@@ -51,9 +51,38 @@ Each fix is on its own branch off `master` in the fork, so it can become a small
 **Fix:** Move it into a model-level service, e.g. `ScriptParser.CompileAndWrite(model, token, address, text)`, that `CodeTool` calls. This would also be the natural place to fix #5.
 **Size:** medium refactor. High value.
 
+### 7. Script text with LF line endings grows every text/movement block: open
+**Where:** `Models/Code/ScriptParser.cs`, `InsertMissingClosers`, the checks `text[i + 1] != '\r'` and `text[close + 1] != '\r'` (around lines 464–476).
+**Problem:** After a `{`, the code adds `\r\n` unless the next character is `\r`. With LF-only text the next character is `\n`, so it inserts a second line break. The first line of every `{ }` block becomes empty, so each text gets a leading newline (`FE`) and each movement an extra byte. Every block outgrows its slot, is moved to free space, and the original is erased. Recompiling an *unchanged* script moves all of its text. The WPF editor always sends CRLF, so GUI users don't see it, but Python scripts, other hosts and Linux/macOS do.
+**Fix:** treat `\n` like `\r` in those checks (or normalize to CRLF at the top of `Compile`). About 2 lines.
+**hma-mcp workaround:** `compile_script` normalizes line endings to CRLF before compiling.
+
+### 8. `ModelArrayElement.SetStringValue` only handles text pointers: open
+**Where:** `Models/ModelTable.cs`, `SetStringValue`, `var pcsRun = (PCSRun)model.GetNextRun(valueAddress);`
+**Problem:** For a pointer to a learnset, trainer team or nested table, this throws `InvalidCastException`. That's the API Python automation uses (`element["movesFromLevel"] = ...`).
+**Fix:** for an `IStreamRun` or `ITableRun` destination, do what `TextStreamElementViewModel.Content` does: `DeserializeRun`, `ObserveRunWritten`, then `NotifyChildren` for changed offsets. Small.
+**hma-mcp workaround:** `write_table_field` does those steps itself.
+
+### 9. Nested-text parsing silently replaces unknown names: open (related to the tuple note below)
+**Where:** table-stream deserialization of tuple/enum cells, e.g. learnset lines `[pair:|t|move::::.data.pokemon.moves.names|level:::.]`.
+**Problem:** `(NOTAMOVE 5)` is stored as `(TACKLE 5)` with no error. For a learnset or trainer team that's easy to miss.
+**Fix idea:** report unparseable cells through the existing error info, as script compile does.
+**hma-mcp workaround:** compares what was written with what reads back and returns `changed_lines`.
+
+### 10. Inline `<auto>` streams after a script: open
+**Where:** `ScriptParser.FormatScript` (skips pointer destinations that fall inside an existing run: "we're trying to point into already formatted data") and the deferred `<auto>` placement in `Compile`.
+**Problem:** (a) A new `<auto>` text placed right after the script is never formatted as text, so decompiling shows the pointer without the text. (b) `<auto>` blocks are placed at the end of the new code even when an explicit pointer in the same script targets that spot, so one overwrites the other.
+**Fix idea:** format deferred streams after writing them; place `<auto>` blocks after the furthest byte the script already uses.
+
+### 11. `ModelArrayElement` setters truncate silently: open
+**Where:** `ModelTable.cs`, `SetValue` (`WriteMultiByteValue` keeps the low bytes: 300 → 44) and `SetStringValue` for fixed-length text (cuts the text to fit).
+**Problem:** same family as #4: a script that sets `speed = 300` or a too-long name gets something else with no message.
+**Fix idea:** throw `ArgumentOutOfRangeException` / `ArgumentException`, like the #4 fix. Small, but it changes behavior, so it's better as an issue first.
+**hma-mcp workaround:** range and length checks in `write_table_field`.
+
 ---
 
 ## Not yet investigated
 
 - **16 tests fail on upstream master**, mostly trainer-team and table-stream tests (`TableTests.ChangePokemonCount…`, `TrainerTeamTests.*`, with NullReferenceException in `TableTool.DataForCurrentRunChanged`). They fail with or without a ROM. This machine has only the .NET 8 runtime, so the tests ran on net8 through roll-forward. They might pass on a real .NET 6 runtime; check that before reporting. The upstream `failing-tests` branch may be related.
-- **Tuple enum fields fuzzy-match silently** (`ModelTupleElement.TryConvertEnumTextToValue` takes the best fuzzy match). This is the same kind of problem as #4, but it may be intentional.
+- **Tuple enum fields fuzzy-match silently** (`ModelTupleElement.TryConvertEnumTextToValue` takes the best fuzzy match). This is the same kind of problem as #4, but it may be intentional. #9 is what it looks like in practice.

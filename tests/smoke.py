@@ -72,6 +72,80 @@ c.call("write_table_field", expect_error=True, table="data.pokemon.stats", row="
 c.call("write_table_field", expect_error=True, table="data.pokemon.stats", row="1", field="type1", value="NOTATYPE")
 c.call("resolve", expect_error=True, target="not.an.anchor")
 
+# --- values are checked against the field size instead of silently wrapping
+c.call("write_table_field", expect_error=True, table="data.pokemon.stats", row="IVYSAUR", field="speed", value="300")
+c.call("write_table_field", expect_error=True, table="data.pokemon.stats", row="IVYSAUR", field="catchRate", value="-1")
+c.call("write_table_field", expect_error=True, table="data.items.stats", row="POTION", field="price", value="70000")
+c.call("write_table_field", expect_error=True, table="data.pokemon.names", row="2", field="name", value="IVYSAURRRRRRR")
+assert c.call("read_table", table="data.pokemon.names", start=2, count=1)["rows"][0]["name"] == "IVYSAUR"
+r = c.call("write_table_field", table="data.pokemon.moves.stats.battle", row="SPARK", field="priority", value="-1")
+assert r["after"] == -1, r  # signed field
+
+# --- row names: unquoted, and matched without quotes/accents/case
+items = c.call("read_table", table="data.items.stats", start=4, count=1, fields="price")["rows"][0]
+assert items["_name"] == "POKé BALL", items
+r = c.call("write_table_field", table="data.items.stats", row="poke ball", field="price", value=str(items["price"] + 1))
+assert r["row"] == 4 and r["after"] == items["price"] + 1, r
+
+# --- calculated, tuple, bits and switch fields
+row = c.call("read_table", table="data.pokemon.stats", start=2, count=1)["rows"][0]
+assert row["baseStatTotal"] == sum(row[k] for k in ("hp", "attack", "def", "speed", "spatk", "spdef")), row
+assert isinstance(row["evs"], dict) and "spatk" in row["evs"], row
+r = c.call("write_table_field", table="data.pokemon.stats", row="IVYSAUR", field="evs", value="hp=2, spdef=1")
+assert r["after"]["hp"] == 2 and r["after"]["spdef"] == 1 and r["after"]["spatk"] == row["evs"]["spatk"], r
+c.call("write_table_field", expect_error=True, table="data.pokemon.stats", row="IVYSAUR", field="evs", value="hp=9")  # 2 bits
+c.call("write_table_field", expect_error=True, table="data.pokemon.stats", row="IVYSAUR", field="baseStatTotal", value="600")
+tms = c.call("read_table", table="data.pokemon.moves.tmcompatibility", start=2, count=1)["rows"][0]["moves"]
+assert isinstance(tms, list) and "SOLARBEAM" in tms, tms
+r = c.call("write_table_field", table="data.pokemon.moves.tmcompatibility", row="IVYSAUR", field="moves", value="+FOCUS PUNCH, -SOLARBEAM")
+assert "FOCUS PUNCH" in r["after"] and "SOLARBEAM" not in r["after"] and len(r["after"]) == len(tms), r
+c.call("write_table_field", expect_error=True, table="data.pokemon.moves.tmcompatibility", row="IVYSAUR", field="moves", value="+NOT A MOVE")
+evo = c.call("read_table", table="data.pokemon.evolutions", start=133, count=1, fields="method1,arg1")["rows"][0]
+assert evo["method1"] == "Stone" and evo["arg1"].endswith("STONE"), evo  # arg switches to an item for stones
+r = c.call("write_table_field", table="data.pokemon.evolutions", row="EEVEE", field="arg1", value="FIRE STONE")
+assert r["after"] == "FIRE STONE", r
+assert "unused_2" in [f["name"] for f in c.call("describe_table", table="data.pokemon.moves.stats.battle")["fields"]]
+
+# --- nested data behind pointers: learnsets, trainer teams, 1-element tables
+lv = c.call("read_table", table="data.pokemon.moves.levelup", start=2, count=1)["rows"][0]["movesFromLevel"]
+r = c.call("write_table_field", table="data.pokemon.moves.levelup", row="IVYSAUR", field="movesFromLevel", value=lv.replace("\r\n", "\n") + '\n("VINE WHIP" 70)')
+assert r["after"].endswith('("VINE WHIP" 70)') and "warning" not in r, r
+r = c.call("write_table_field", table="data.pokemon.moves.levelup", row="IVYSAUR", field="movesFromLevel", value="(NOTAMOVE 5)")
+assert r.get("changed_lines"), r  # HMA stores a default for unknown names: the tool must say so
+c.call("undo")
+brock = c.call("read_table", table="data.trainers.stats", where="name=BROCK", count=1, fields="pokemonCount,pokemon")["rows"][0]
+team = brock["pokemon"] + '\n15 ONIX (IVs=0)\n- TACKLE\n- BIND\n- "ROCK TOMB"\n- -\n'
+c.call("write_table_field", table="data.trainers.stats", row=str(brock["_index"]), field="pokemon", value=team)
+after = c.call("read_table", table="data.trainers.stats", start=brock["_index"], count=1, fields="pokemonCount")["rows"][0]
+assert after["pokemonCount"] == brock["pokemonCount"] + 1, after
+route1 = c.call("read_table", table="data.pokemon.wild", where="bank=3, map=19", count=5)["rows"]
+assert len(route1) == 1, route1
+grass = route1[0]["grass"]
+r = c.call("write_table_field", table="data.pokemon.wild", row=str(route1[0]["_index"]), field="grass", value=grass.replace("rate : ", "rate : 1"))
+assert r["after"] != grass and "warning" not in r, r
+c.call("write_table_field", expect_error=True, table="data.pokemon.wild", row=str(route1[0]["_index"]), field="surf", value="rate : 1")
+
+# --- errors from inside HMA come back with a message, not "An error occurred"
+c.call("write_table_field", expect_error=True, table="data.pokemon.moves.levelup", row="IVYSAUR", field="movesFromLevel", value="@FFFFFFFF")
+
+# --- scripts with text/movement blocks: LF-only text must recompile byte-identically (HMA's parser
+# assumes CRLF and used to add a newline to every block, moving all its text), and pointing at inline
+# movement by address must not erase it. 16575C is the Pallet Town NPC by the sign (FireRed 1.0).
+npc = "16575C"
+npc_before = c.call("read_bytes", address=npc, length=256)
+d = c.call("decompile_script", address=npc)["script"]
+assert "<auto>" in d and "{" in d, d
+c.call("compile_script", address=npc, script=d.replace("\r\n", "\n"))
+assert c.call("read_bytes", address=npc, length=256) == npc_before, "LF script recompile changed bytes"
+movement = c.call("read_bytes", address="165829", length=6)
+explicit = (d.replace("\r\n", "\n").replace("move.npc 1 <auto>\n{\nwalk_right", "move.npc 1 <165829>\n{\nwalk_right", 1)
+            .replace("move.npc 1 <auto>\n{\nwalk_left", "move.npc 1 <16582C>\n{\nwalk_left", 1))
+assert explicit != d.replace("\r\n", "\n")
+c.call("compile_script", address=npc, script=explicit)
+assert c.call("read_bytes", address="165829", length=6) == movement, "inline movement was erased"
+c.call("undo")
+assert c.call("read_bytes", address=npc, length=256) == npc_before
+
 # --- scripts: find an event script, decompile, recompile unchanged (byte-identical), then grow it
 anchors = c.call("list_anchors", filter="", limit=2000)["anchors"]
 event = next((a for a in anchors if a["kind"] == "event-script"), None)

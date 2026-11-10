@@ -107,8 +107,8 @@ Then just ask, for example:
 | 📂 | `open_rom` · `rom_info` · `close_rom` | Open a `.gba`, with HMA's `.toml` metadata if it's there |
 | 🔎 | `list_anchors` | Search named anchors: `data.pokemon.stats`, `scripts.…`, `graphics.…` |
 | 🧭 | `resolve` | Anchor or address → what's there: type of data, table row and field, pointer count |
-| 📋 | `describe_table` · `read_table` | Table layout, and rows as JSON with enums as names |
-| ✏️ | `write_table_field` | Set one field by row number or row name (`CHARMANDER`), validated |
+| 📋 | `describe_table` · `read_table` | Table layout, and rows as JSON: enums as names, flag sets as lists, packed fields as objects, learnsets and teams as text; filter rows with `where` (`bank=3, map=19`) |
+| ✏️ | `write_table_field` | Set one field by row number or row name (`CHARMANDER`), checked against the field's size; also learnsets, TM lists, trainer teams |
 | 📜 | `decompile_script` · `compile_script` | Event, battle, animation and trainer-AI scripts, with automatic repointing |
 | ⌨️ | `hma_edit` | Type into HMA's hex view using its full edit language (`^anchor`, `<pointer>`, `"text"`) |
 | 🧱 | `read_bytes` · `write_bytes` · `find_free_space` | Raw access, for when you need it |

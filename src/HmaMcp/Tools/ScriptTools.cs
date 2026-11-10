@@ -33,6 +33,9 @@ public static class ScriptTools {
       [Description(KindHelp)] string kind = "event") => sessions.Edit(s => {
       var start = s.ResolveAddress(address);
       var parser = Parser(s, kind);
+      // HMA's parser (InsertMissingClosers) assumes CRLF: with LF-only text it adds a blank line after
+      // every '{', so each text/movement block gains a leading newline and gets moved. Normalize first.
+      script = script.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\n", "\r\n");
       var errors = new List<string>();
       void OnError(object? sender, ScriptErrorInfo e) => errors.Add(e.Message);
       using (ModelCacheScope.CreateScope(s.Model)) {
@@ -105,7 +108,15 @@ public static class ScriptTools {
 
       s.Token.ChangeData(model, start, code);
       if (originalStart == start && length > code.Length) {
-         model.ClearFormatAndData(s.Token, start + code.Length, length - code.Length);
+         // The old length can include data stored right after the script (e.g. inline movement). If the new
+         // script still points into that tail, clear only up to the first byte it points at.
+         var tailStart = start + code.Length;
+         var tailEnd = start + length;
+         for (int i = 0; i + 4 <= code.Length; i++) {
+            var target = code[i] | code[i + 1] << 8 | code[i + 2] << 16 | (code[i + 3] - 0x08) << 24;
+            if (code[i + 3] is 0x08 or 0x09 && target >= tailStart && target < tailEnd) tailEnd = target;
+         }
+         if (tailEnd > tailStart) model.ClearFormatAndData(s.Token, tailStart, tailEnd - tailStart);
       }
       var formatted = parser.FormatScript<TRun>(s.Token, model, start, code.Length);
       if (sources != null) {

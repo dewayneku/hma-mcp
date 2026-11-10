@@ -63,16 +63,21 @@ public sealed class RomSession {
       ?? throw new InvalidOperationException("HMA's ChangeHistory no longer has an undoStack field; update RomSession.Edit.");
    int UndoDepth => ((System.Collections.ICollection)UndoStackField.GetValue(History)!).Count;
 
-   /// <summary>Run an edit and record everything it changed as one undo step.</summary>
+   /// <summary>Run an edit and record everything it changed as one undo step.
+   /// If the edit throws, whatever it already changed is undone, so a failed tool call leaves the ROM as it was.</summary>
    public T Edit<T>(Func<T> body) {
       History.ChangeCompleted();
       var depth = UndoDepth;
       try {
-         return body();
-      } finally {
+         var result = body();
          History.ChangeCompleted();
          var steps = UndoDepth - depth;
          if (steps > 0) { undoGroups.Push(steps); redoGroups.Clear(); }
+         return result;
+      } catch {
+         History.ChangeCompleted();
+         for (int steps = UndoDepth - depth; steps > 0; steps--) History.Undo.Execute(null);
+         throw;
       }
    }
 
@@ -115,7 +120,12 @@ public sealed class RomSessions {
    public T With<T>(Func<RomSession, T> action) {
       lock (gate) {
          if (current == null) throw new McpException("No ROM is open. Call open_rom with the path to a .gba file first.");
-         return action(current);
+         try {
+            return action(current);
+         } catch (Exception ex) when (ex is not McpException) {
+            // The MCP SDK hides the message of anything that isn't an McpException ("An error occurred invoking ...").
+            throw new McpException($"HMA failed: {ex.GetType().Name}: {ex.Message}", ex);
+         }
       }
    }
 
