@@ -490,3 +490,6 @@ $RECYCLE.BIN/
 !global.toml
 .hma-mcp-backups/
 artifacts/
+
+# Local test area: working ROM copies live here
+playground/
