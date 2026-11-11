@@ -1,0 +1,76 @@
+"""End-to-end check of hma-mcp against Emerald (U) (BPEE0).
+
+usage: python tests/smoke_emerald.py <path-to-hma-mcp.exe> <emerald.gba>
+
+Like smoke.py, it copies the ROM into a temp folder and never writes to the path you pass.
+smoke.py is the full test (written against FireRed); this one checks that the same tools
+work on Emerald's tables, maps, scripts and text.
+"""
+import os
+import re
+import shutil
+import sys
+import tempfile
+
+from mcp_client import McpClient
+
+exe = os.path.abspath(sys.argv[1])
+work = tempfile.mkdtemp(prefix="hma-mcp-emerald-")
+rom = os.path.join(work, "emerald.gba")
+shutil.copyfile(sys.argv[2], rom)
+
+c = McpClient(exe)
+try:
+    info = c.call("open_rom", path=rom)
+    assert info["game_code"] == "BPEE0", info["game_code"]
+
+    # --- tables: Gen 3 species order (TREECKO is row 277), range checks, enums
+    row = c.call("read_table", table="data.pokemon.stats", start=277, count=1)["rows"][0]
+    assert row["_name"] == "TREECKO" and row["type1"] == "GRASS" and row["ability1"] == "OVERGROW", row
+    r = c.call("write_table_field", table="data.pokemon.stats", row="TREECKO", field="type2", value="DRAGON")
+    assert (r["before"], r["after"]) == ("GRASS", "DRAGON"), r
+    c.call("write_table_field", expect_error=True, table="data.pokemon.stats", row="TREECKO", field="speed", value="300")
+    c.call("write_table_field", expect_error=True, table="data.pokemon.stats", row="TREECKO", field="type2", value="FAIRY")
+    potion = c.call("read_table", table="data.items.stats", start=13, count=1)["rows"][0]
+    assert potion["_name"] == "POTION" and potion["price"] == 300, potion
+    trainer = c.call("read_table", table="data.trainers.stats", start=1, count=1)["rows"][0]
+    assert trainer["name"] == "SAWYER" and "GEODUDE" in trainer["pokemon"], trainer
+    wild = c.call("read_table", table="data.pokemon.wild", where="bank=0, map=16")["rows"]
+    assert len(wild) == 1 and wild[0]["grass"].startswith("rate : 20"), wild
+
+    # --- maps: Littleroot has 6 maps with that name (town + houses/lab), Route 101 one
+    town = c.call("find_map", name="littleroot")
+    assert town["total"] == 6 and town["maps"][0]["id"] == "0.9", town
+    assert [m["id"] for m in c.call("find_map", name="route 101")["maps"]] == ["0.16"]
+    ev = c.call("map_events", map="0.9")
+    assert ev["name"] == "LITTLEROOT TOWN" and ev["settings"]["music"] == "mus_littleroot", ev["settings"]
+    assert (ev["layout"]["width"], ev["layout"]["height"]) == (20, 20), ev["layout"]
+
+    # --- scripts: recompiling an unchanged NPC script leaves it byte-identical
+    npc = next(o["script"].strip("<>") for o in ev["events"]["objects"]["items"] if o["script"].startswith("<"))
+    d = c.call("decompile_script", address=npc)
+    before = c.call("read_bytes", address=npc, length=d["compiled_length"])
+    r = c.call("compile_script", address=npc, script=d["script"])
+    assert r["new_length"] == d["compiled_length"] and r["pointers_updated"] == 0, r
+    assert c.call("read_bytes", address=npc, length=d["compiled_length"]) == before
+
+    # --- text: the town sign, grown so it has to move, then undone
+    sign = ev["events"]["signposts"]["items"][0]["arg"].strip("<>")
+    text_at = re.search(r"msgbox\.\w+ <([0-9A-F]{6})>", c.call("decompile_script", address=sign)["script"]).group(1)
+    t = c.call("read_text", address=text_at)
+    assert t["text"].startswith("LITTLEROOT TOWN\n"), t
+    w = c.call("write_text", address=text_at, text="LITTLEROOT TOWN\nA much longer sign that won't fit in place.")
+    assert w["moved_from"] == text_at, w
+    assert f"<{w['address']}>" in c.call("decompile_script", address=sign)["script"]
+    c.call("undo")
+    assert c.call("read_text", address=text_at)["text"] == t["text"]
+
+    # --- save -> reopen keeps the edit
+    c.call("save")
+    c.call("close_rom")
+    c.call("open_rom", path=rom)
+    assert c.call("read_table", table="data.pokemon.stats", start=277, count=1, fields="type2")["rows"][0]["type2"] == "DRAGON"
+    print("\nALL EMERALD CHECKS PASSED")
+finally:
+    c.close()
+    shutil.rmtree(work, ignore_errors=True)

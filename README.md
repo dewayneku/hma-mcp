@@ -119,7 +119,7 @@ Then just ask, for example:
 
 ### Games
 
-HMA supports FireRed, LeafGreen, Emerald, Ruby and Sapphire, and hacks of them. **FireRed (U) 1.0 is tested end to end with hma-mcp.** The other games use the same engine but haven't been run through hma-mcp's tests yet. Reports are welcome.
+HMA supports FireRed, LeafGreen, Emerald, Ruby and Sapphire, and hacks of them. **FireRed (U) 1.0 is tested end to end with hma-mcp, and Emerald (U) passes a shorter check** (tables, maps, scripts, text, save). Ruby, Sapphire and LeafGreen use the same engine but haven't been run through hma-mcp's tests yet. Reports are welcome.
 
 ## How it works
 
@@ -143,7 +143,7 @@ Problems found in HMA itself while building this, with fixes, are tracked in [do
 python tests/smoke.py <path-to-hma-mcp> [path/to/firered.gba]
 ```
 
-- **With a ROM:** copies it to a temp folder and edits only the copy. Checks reads, writes, enum validation, undo/redo, a script that has to move to free space, `hma_edit`, and a save → reopen round trip (written against FireRed (U) 1.0).
+- **With a ROM:** copies it to a temp folder and edits only the copy. Checks reads, writes, enum validation, undo/redo, a script that has to move to free space, `hma_edit`, and a save → reopen round trip (written against FireRed (U) 1.0). `tests/smoke_emerald.py` runs a shorter version on Emerald (U).
 - **Without a ROM:** checks the MCP handshake and tool list, and opens a blank ROM so HMA loads all of its reference data. [CI](.github/workflows/ci.yml) runs this on Windows, Linux and macOS.
 
 ## Legal

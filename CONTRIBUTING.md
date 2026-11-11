@@ -40,6 +40,7 @@ Requires the .NET 8 SDK. HMA's core is built from the `external/HexManiacAdvance
 dotnet build src/HmaMcp -c Release
 python tests/smoke.py src/HmaMcp/bin/Release/net8.0/hma-mcp     # no ROM: what CI runs
 python tests/smoke.py src/HmaMcp/bin/Release/net8.0/hma-mcp path/to/firered.gba   # full run, if you have FireRed (U) 1.0
+python tests/smoke_emerald.py src/HmaMcp/bin/Release/net8.0/hma-mcp path/to/emerald.gba   # if you have Emerald (U)
 ```
 
 Say in the PR which games you tested with.
