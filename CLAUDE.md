@@ -21,4 +21,4 @@ MCP server (C#, .NET 8) exposing HexManiacAdvance's core engine as tools for GBA
 
 ## Status
 
-Private until it has been put through its paces and its limitations are documented; then it goes public.
+Public since 2026-11-10. Tested on FireRed (U) 1.0 (`tests/smoke.py`) and Emerald (U) (`tests/smoke_emerald.py`). Anything pushed is visible to everyone: keep ROMs, `.toml` files, local paths and personal info out of commits.
