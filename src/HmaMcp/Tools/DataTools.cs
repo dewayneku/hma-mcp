@@ -254,16 +254,16 @@ public static class DataTools {
    }
 
    /// <summary>Case-, quote- and accent-insensitive name, so POKE BALL, "POKé BALL" and poké ball all match.</summary>
-   static string NormalizeName(string name) {
+   internal static string NormalizeName(string name) {
       var decomposed = Unquote(name.Trim()).Normalize(System.Text.NormalizationForm.FormD);
       var plain = new string(decomposed.Where(c => CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark).ToArray());
       return plain.ToUpperInvariant();
    }
 
-   static string Unquote(string text) =>
+   internal static string Unquote(string text) =>
       text.Length >= 2 && text[0] == '"' && text[^1] == '"' && text.IndexOf('"', 1) == text.Length - 1 ? text[1..^1] : text;
 
-   static object? ReadField(RomSession s, ITableRun run, int index, Field f) {
+   internal static object? ReadField(RomSession s, ITableRun run, int index, Field f) {
       var model = s.Model;
       var address = run.Start + run.ElementLength * index + f.Offset;
       var seg = f.Seg;
@@ -370,7 +370,8 @@ public static class DataTools {
             return;
          }
          case ElementContentType.PCS: {
-            var bytes = model.TextConverter.Convert(value, out _);
+            var bytes = model.TextConverter.Convert(value, out var bad);
+            if (bad) throw new McpException($"'{value}' has characters the game's font doesn't have.");
             if (bytes.Count > seg.Length)
                throw new McpException($"'{value}' is too long for '{f.Key}': it encodes to {bytes.Count - 1} bytes, but the field holds at most {seg.Length - 1} (plus the end marker).");
             while (bytes.Count < seg.Length) bytes.Add(0);
@@ -407,7 +408,9 @@ public static class DataTools {
       if (destinationRun.Start != destination) destinationRun = null;
 
       if (destinationRun is PCSRun || (destinationRun == null && seg is ArrayRunPointerSegment { InnerFormat: "\"\"" })) {
-         var bytes = model.TextConverter.Convert(value, out _);
+         value = TextTools.Escape(value);
+         var bytes = model.TextConverter.Convert(value, out var bad);
+         if (bad) throw new McpException($"The text for '{f.Key}' has characters the game's font doesn't have.");
          var pcs = destinationRun as PCSRun ?? new PCSRun(model, destination, Math.Max(1, PCSString.ReadString(model, destination, true)), new SortedSpan<int>(address));
          pcs = model.RelocateForExpansion(s.Token, pcs, bytes.Count);
          pcs = (PCSRun)pcs.DeserializeRun(value, s.Token, out _, out _);

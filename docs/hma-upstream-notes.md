@@ -4,7 +4,7 @@ Issues in [HexManiacAdvance](https://github.com/haven1433/HexManiacAdvance) foun
 
 Status: **open** = not yet worked on · **on fork** = fix branch pushed to [dewayneku/HexManiacAdvance](https://github.com/dewayneku/HexManiacAdvance), no PR opened · **reported** = issue/PR filed (link it) · **merged** = in upstream.
 
-Each fix is on its own branch off `master` in the fork, so it can become a small, separate PR. `local/all-fixes` merges all four, for testing together. In `external/HexManiacAdvance`, the fork is the `fork` remote (local git config only; run `git remote add fork https://github.com/dewayneku/HexManiacAdvance.git` in a fresh clone).
+Each fix is on its own branch off `master` in the fork, so it can become a small, separate PR. `local/all-fixes` merges fixes #1–#4, for testing together (#7 is not in it yet). In `external/HexManiacAdvance`, the fork is the `fork` remote (local git config only; run `git remote add fork https://github.com/dewayneku/HexManiacAdvance.git` in a fresh clone).
 
 ## How fixes are verified
 
@@ -51,10 +51,12 @@ Each fix is on its own branch off `master` in the fork, so it can become a small
 **Fix:** Move it into a model-level service, e.g. `ScriptParser.CompileAndWrite(model, token, address, text)`, that `CodeTool` calls. This would also be the natural place to fix #5.
 **Size:** medium refactor. High value.
 
-### 7. Script text with LF line endings grows every text/movement block: open
+### 7. Script text with LF line endings grows every text/movement block: on fork
+**Branch:** [`fix/script-lf-line-endings`](https://github.com/dewayneku/HexManiacAdvance/tree/fix/script-lf-line-endings) (`88c2e0c4`). `ScriptParser.cs` (2 lines) plus 2 new tests in `CodeToolTests.cs`.
 **Where:** `Models/Code/ScriptParser.cs`, `InsertMissingClosers`, the checks `text[i + 1] != '\r'` and `text[close + 1] != '\r'` (around lines 464–476).
 **Problem:** After a `{`, the code adds `\r\n` unless the next character is `\r`. With LF-only text the next character is `\n`, so it inserts a second line break. The first line of every `{ }` block becomes empty, so each text gets a leading newline (`FE`) and each movement an extra byte. Every block outgrows its slot, is moved to free space, and the original is erased. Recompiling an *unchanged* script moves all of its text. The WPF editor always sends CRLF, so GUI users don't see it, but Python scripts, other hosts and Linux/macOS do.
 **Fix:** treat `\n` like `\r` in those checks (or normalize to CRLF at the top of `Compile`). About 2 lines.
+**Verified:** the new tests `LfLineEndings_InsertMissingClosers_AddsNoBlankLines` and `LfLineEndings_CompileText_TextHasNoLeadingNewline` fail on master and pass with the fix. Full suite with the ROM: 1635 passed (the baseline 1633 plus the 2 new), and the same 16 failed. `HexManiac.Integration` has 1 failure (`UseTypeSwapScript_UpgradeVersion_TableStillIncluded`), which also fails on master.
 **hma-mcp workaround:** `compile_script` normalizes line endings to CRLF before compiling.
 
 ### 8. `ModelArrayElement.SetStringValue` only handles text pointers: open
@@ -79,6 +81,12 @@ Each fix is on its own branch off `master` in the fork, so it can become a small
 **Problem:** same family as #4: a script that sets `speed = 300` or a too-long name gets something else with no message.
 **Fix idea:** throw `ArgumentOutOfRangeException` / `ArgumentException`, like the #4 fix. Small, but it changes behavior, so it's better as an issue first.
 **hma-mcp workaround:** range and length checks in `write_table_field`.
+
+### 12. Text parsing drops some line breaks and unknown characters without an error: open
+**Where:** `Models/PCSString.cs`, `Convert(string input, ...)`: the check `if (index < input.Length - doubleNewline.Length)` before the newline handling, and the character loop.
+**Problem:** (a) Only `Environment.NewLine` counts as a line break, so LF-only text on Windows loses every line break. (b) A line break that starts in the last 4 characters (`doubleNewline.Length`) is skipped: `"A\r\nB"` becomes `AB`. (c) Characters with no PCS byte are dropped; `containsBadCharacters` is set, but `PCSRun.DeserializeRun` writes the text anyway. All three silently change what's written.
+**Fix idea:** accept both `\n` and `\r\n`; check the end of the input with `StartsWith` instead of the length guard; have callers report bad characters. Small.
+**hma-mcp workaround:** `write_text` and `write_table_field` turn line breaks into explicit `\n`/`\l`/`\pn` codes before calling HMA (the same rules HMA uses), and reject characters the font doesn't have.
 
 ---
 

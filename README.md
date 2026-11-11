@@ -109,6 +109,8 @@ Then just ask, for example:
 | 🧭 | `resolve` | Anchor or address → what's there: type of data, table row and field, pointer count |
 | 📋 | `describe_table` · `read_table` | Table layout, and rows as JSON: enums as names, flag sets as lists, packed fields as objects, learnsets and teams as text; filter rows with `where` (`bank=3, map=19`) |
 | ✏️ | `write_table_field` | Set one field by row number or row name (`CHARMANDER`), checked against the field's size; also learnsets, TM lists, trainer teams |
+| 🗺️ | `find_map` · `map_events` | Find a map by name (`PALLET TOWN` → `3.0`), then list its NPCs, warps, trigger scripts, signs and connections, with addresses ready for `write_table_field` |
+| 💬 | `read_text` · `write_text` | Game text at an address (a script's message, say); longer text is moved and every pointer to it updated |
 | 📜 | `decompile_script` · `compile_script` | Event, battle, animation and trainer-AI scripts, with automatic repointing |
 | ⌨️ | `hma_edit` | Type into HMA's hex view using its full edit language (`^anchor`, `<pointer>`, `"text"`) |
 | 🧱 | `read_bytes` · `write_bytes` · `find_free_space` | Raw access, for when you need it |

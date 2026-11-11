@@ -7,6 +7,7 @@ it copies the ROM into a temp folder first and never writes to the path you pass
 Written against FireRed (U) 1.0 (BPRE); other games may name anchors differently.
 """
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -22,7 +23,8 @@ names = [t["name"] for t in c.tools()]
 print(len(names), "tools:", ", ".join(names), "\n")
 expected = {"open_rom", "rom_info", "save", "undo", "redo", "close_rom", "list_anchors", "resolve",
             "describe_table", "read_table", "write_table_field", "read_bytes", "write_bytes",
-            "find_free_space", "hma_edit", "decompile_script", "compile_script"}
+            "find_free_space", "hma_edit", "decompile_script", "compile_script",
+            "find_map", "map_events", "read_text", "write_text"}
 assert expected <= set(names), f"missing tools: {expected - set(names)}"
 c.call("rom_info", expect_error=True)
 
@@ -127,6 +129,52 @@ c.call("write_table_field", expect_error=True, table="data.pokemon.wild", row=st
 
 # --- errors from inside HMA come back with a message, not "An error occurred"
 c.call("write_table_field", expect_error=True, table="data.pokemon.moves.levelup", row="IVYSAUR", field="movesFromLevel", value="@FFFFFFFF")
+
+# --- maps: find by name, everything on a map, warps/connections name where they lead
+pallet = c.call("find_map", name="pallet town")
+assert pallet["total"] == 5 and pallet["maps"][0]["id"] == "3.0", pallet
+assert [m["id"] for m in c.call("find_map", name="route 1")["maps"]] == ["3.19"]  # not ROUTE 10-19
+c.call("map_events", expect_error=True, map="PALLET TOWN")  # 5 maps share the name: asks for an id
+c.call("map_events", expect_error=True, map="99.99")
+ev = c.call("map_events", map="3.0")
+assert ev["name"] == "PALLET TOWN" and ev["layout"]["width"] == 24 and ev["settings"]["music"] == "mus_pallet", ev["settings"]
+objs = ev["events"]["objects"]
+assert len(objs["items"]) == 3 and objs["items"][0]["script"] == "<16575C>", objs
+assert ev["events"]["warps"]["items"][0]["to"] == "4.0 PALLET TOWN", ev["events"]["warps"]
+signs = ev["events"]["signposts"]["items"]
+assert len(signs) == 5 and signs[0]["arg"].startswith("<"), signs
+assert [x["to"] for x in ev["connections"]["items"]] == ["3.19 ROUTE 1", "3.39 ROUTE 21"], ev["connections"]
+# the table address and _index it returns work with write_table_field
+c.call("write_table_field", table=objs["table"], row="0", field="x", value="4")
+assert c.call("map_events", map="3.0")["events"]["objects"]["items"][0]["x"] == 4
+c.call("undo")
+
+# --- text by address. The sign's text: HMA knows no pointer to it until the sign script is formatted,
+# so read_text/write_text find the pointer by searching the ROM.
+sign_text = re.search(r"msgbox\.\w+ <([0-9A-F]{6})>", c.call("decompile_script", address=signs[0]["arg"].strip("<>"))["script"]).group(1)
+t = c.call("read_text", address=sign_text)
+assert t["text"] == "OAK POKéMON RESEARCH LAB" and len(t["pointed_from"]) == 1, t
+raw = c.call("read_bytes", address=sign_text, length=t["length"])
+c.call("write_text", address=sign_text, text=t["text"])  # unchanged: byte-identical
+assert c.call("read_bytes", address=sign_text, length=t["length"]) == raw
+w = c.call("write_text", address=sign_text, text="PROF. OAK'S POKéMON\nRESEARCH LABORATORY")
+assert w["moved_from"] == sign_text and w["after"] == "PROF. OAK'S POKéMON\nRESEARCH LABORATORY", w
+assert f"<{w['address']}>" in c.call("decompile_script", address=signs[0]["arg"].strip("<>"))["script"]
+c.call("undo")
+assert c.call("read_bytes", address=sign_text, length=t["length"]) == raw
+# line breaks: first is \n (FE), later ones \l (FA), a blank line a new box (FB); a short text is FF-filled
+c.call("write_text", address=sign_text, text="A\nB\nC\n\nD")
+assert c.call("read_bytes", address=sign_text, length=10).endswith("BB FE BC FA BD FB BE FF FF FF"), "line breaks"
+c.call("undo")
+c.call("write_text", expect_error=True, address=sign_text, text="A{B")  # not in the font
+c.call("write_text", expect_error=True, address="data.pokemon.stats", text="X")  # not text
+# text through a table pointer gets the same line-break handling; an unchanged rewrite is byte-identical
+potion = c.call("read_table", table="data.items.stats", start=13, count=1, fields="description")["rows"][0]["description"]
+r = c.call("write_table_field", table="data.items.stats", row="POTION", field="description", value=potion.replace("\r\n", "\n"))
+assert r["after"] == potion, r
+r = c.call("write_table_field", table="data.items.stats", row="POTION", field="description", value="Heals 20 HP\nof one POKéMON.")
+assert r["after"].replace("\r\n", "\n") == "Heals 20 HP\nof one POKéMON.", r
+c.call("undo")
 
 # --- scripts with text/movement blocks: LF-only text must recompile byte-identically (HMA's parser
 # assumes CRLF and used to add a newline to every block, moving all its text), and pointing at inline

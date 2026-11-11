@@ -102,8 +102,9 @@ public sealed class RomSessions {
       hma-mcp edits GBA Pokemon ROMs (FireRed, LeafGreen, Emerald, Ruby, Sapphire and hacks of them)
       through HexManiacAdvance's core library, the same engine the HMA editor uses.
 
-      Workflow: open_rom -> explore (rom_info, list_anchors, describe_table, read_table, decompile_script)
-      -> edit (write_table_field, compile_script, write_bytes, hma_edit) -> save.
+      Workflow: open_rom -> explore (rom_info, list_anchors, describe_table, read_table, decompile_script,
+      read_text, find_map, map_events) -> edit (write_table_field, compile_script, write_text, write_bytes,
+      hma_edit) -> save. For anything on a map (NPCs, signs, warps, its scripts), start with find_map.
       Nothing touches the file on disk until save is called; save makes a timestamped backup of the
       original ROM the first time and writes HMA's .toml metadata next to the ROM, so the HMA GUI
       sees the same anchors. Every edit tool is one undo step (undo / redo).

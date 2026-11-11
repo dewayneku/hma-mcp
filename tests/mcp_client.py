@@ -31,15 +31,15 @@ class McpClient:
     def tools(self):
         return self.rpc("tools/list")["result"]["tools"]
 
-    def call(self, name, expect_error=False, **args):
+    def call(self, tool, /, expect_error=False, **args):
         """Call a tool. Returns parsed JSON when possible, else text. Raises on unexpected errors."""
-        r = self.rpc("tools/call", {"name": name, "arguments": args})["result"]
+        r = self.rpc("tools/call", {"name": tool, "arguments": args})["result"]
         text = r["content"][0]["text"]
         is_error = bool(r.get("isError"))
         if not self.quiet:
-            print(f"--- {name} {'ERROR ' if is_error else ''}{args}\n{text[:1200]}\n")
+            print(f"--- {tool} {'ERROR ' if is_error else ''}{args}\n{text[:1200]}\n")
         if is_error != expect_error:
-            raise AssertionError(f"{name}: expected error={expect_error}, got: {text}")
+            raise AssertionError(f"{tool}: expected error={expect_error}, got: {text}")
         try:
             return json.loads(text)
         except ValueError:

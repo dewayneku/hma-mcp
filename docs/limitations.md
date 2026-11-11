@@ -16,14 +16,16 @@ Tested so far: FireRed (U) 1.0 (BPRE0), 2026-11-10, with these tasks:
 | Trainer team | Add a third Pokémon to Brock | ✅ after fix; `pokemonCount` follows |
 | Wild encounters | Find Route 1, swap a slot, change grass rate | ✅ after fix (`where` filter, nested write) |
 | Scripts | Pallet Town NPC and sign, `scripts.newgame.setflags` | ✅ after fixes: dialogue edit, growth + relocation, undo/redo |
+| Maps | Find Pallet Town and Route 1 by name, list objects/warps/signs/connections, move an NPC | ✅ new `find_map`, `map_events` |
+| Text by address | Read the Pallet Town sign text, grow it (moved, sign pointer updated), undo; line breaks and new boxes | ✅ new `read_text`, `write_text` |
 | Round trip | save, reopen, re-read every edit, check `.toml` | ✅ moved anchors and free-space start are kept |
 
 ## Open
 
-### Maps can only be reached by bank/map number and pointer chasing
-**Tried:** "edit the NPC next to the sign in Pallet Town" and "change Route 1's wild Pokémon".
-**What happens:** there are no anchors per map or per script. You go `data.maps.banks` row 3 → map 0 (`<350618>`) → `events` → `objects` (`<3B4D84>`) → the object's `script`, one `read_table` per hop. Wild data is keyed by bank/map numbers, not names, and you have to know that Route 1 is bank 3, map 19.
-**Workaround:** `read_table` with `where`, e.g. `table=data.pokemon.wild, where="bank=3, map=19"`, then `read_table` at the address a pointer field shows. A `find_map`/`map_events` tool (name → bank/map → objects, warps, signs, scripts) is the most useful next tool.
+### Maps: listing works, adding events doesn't have a helper
+**Tried:** finding Pallet Town's NPCs and signs, moving an NPC.
+**What happens:** `find_map` and `map_events` list everything on a map, with the table address and row index to edit each item with `write_table_field`. Overworld sprites show as numbers (`graphics: "23"`), because HMA's sprite list has no names. Indoor maps share their town's name, so `PALLET TOWN` matches 5 maps; `map_events` asks for an id then (`3.0` is the town itself). Adding an NPC, warp or sign (growing a list and its count) hasn't been tried. Only FireRed has been tested.
+**Workaround:** none tested yet. The count fields (`objectCount`, ...) are in the `events` table that `map_events` gives the address of, and each list is a table HMA should repoint when it grows, but that path hasn't been tried.
 
 ### Nested data is one more call away
 **Tried:** reading Route 1's grass encounter list.
@@ -43,12 +45,12 @@ Tested so far: FireRed (U) 1.0 (BPRE0), 2026-11-10, with these tasks:
 ### Inline `<auto>` data after a script
 **Tried:** recompiling the Pallet Town NPC script, whose two movements are stored right after it (decompile shows them as `<auto>`).
 **What happens:** keeping them as `<auto>` is safe: they're written back in place. Replacing *both* with their real addresses also works. Replacing only one makes HMA place the remaining `<auto>` block on top of it, which corrupts the movement. A brand-new `<auto>` text placed right after a script is not marked as text, so `decompile_script` shows its pointer without the text.
-**Workaround:** leave `<auto>` as decompiled. To read or edit such a text, decompile the script again after a save/reopen, or use `read_bytes`.
+**Workaround:** leave `<auto>` as decompiled. To read or edit such a text, use `read_text`/`write_text` at the address the pointer shows.
 
 ### Some script texts aren't shown inline
 **Tried:** decompiling the Pallet Town sign (`165838`).
 **What happens:** `msgbox.default <17D866>` with no text block, because HMA hadn't recognized that address as text yet. After any compile of that script it is shown.
-**Workaround:** recompile the script unchanged (byte-identical), then decompile again. There's no standalone tool to read text at an address yet.
+**Workaround:** `read_text` and `write_text` at that address. They find the pointer by searching the ROM when HMA doesn't know it, so a longer text can still be moved safely.
 
 ### Graphics are not supported
 No tools yet for viewing or importing sprites, palettes or tilesets.
@@ -75,4 +77,7 @@ All of these have checks in `tests/smoke.py`.
 - **Errors from inside HMA had no message.** They now say what failed. A failed edit is rolled back, so it leaves the ROM unchanged.
 - **Recompiling a script with LF line endings moved all of its text.** HMA's parser assumes CRLF and added a newline at the start of every text and movement block, so each one grew, was moved to free space and the original erased. `compile_script` now normalizes line endings; an unchanged script recompiles byte-identically.
 - **A shorter script erased data it still pointed to.** Pointing at the inline movement after a script by address made the script shorter, and the "clear the old tail" step wiped the movement. The tail is now only cleared up to the first byte the new script points into.
+- **Line breaks in text were dropped.** HMA's text parser only recognizes the OS line break (CRLF on Windows), so text sent with LF lost every line break, and it also ignores a line break in the last few characters. Text written with `write_table_field` or `write_text` now has its line breaks turned into HMA's explicit codes first (`\n`, `\l`, and a blank line becomes `\pn`, the same rules HMA uses). Characters the game's font doesn't have are now an error instead of being dropped.
+- **Maps had no names.** Reaching a Pallet Town NPC took five `read_table` calls and knowing it's bank 3, map 0. `find_map` goes from a name to `bank.map`, and `map_events` lists everything on the map.
+- **There was no tool for text at an address.** `read_text` and `write_text` read and write a script's message (or any text), moving it and updating pointers if it grows.
 - `read_table` gained `where` (e.g. `bank=3, map=19`, `name=BROCK`) and rejects unknown field names; `describe_table` explains each special field type.
