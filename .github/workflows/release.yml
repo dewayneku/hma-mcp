@@ -1,0 +1,131 @@
+name: Release
+
+# Push a tag like v0.1.0 to build self-contained servers for every platform
+# (no .NET needed to run them), test them, and publish a GitHub release with:
+#   hma-mcp-<rid>.zip / .tar.gz   the server folder, for any MCP client
+#   hma-mcp-<platform>.mcpb       one-click bundles (Claude Desktop and other MCPB clients)
+#   server.json                   the MCP Registry entry, with each bundle's SHA-256,
+#                                 which is then published to registry.modelcontextprotocol.io
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+  id-token: write   # signs in to the MCP Registry as this GitHub repo's owner
+
+jobs:
+  build:
+    name: Build (${{ matrix.rid }})
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - { rid: win-x64,   os: windows-latest, mcpb: win32,  test: true }
+          - { rid: linux-x64, os: ubuntu-latest,  mcpb: linux,  test: true }
+          - { rid: osx-arm64, os: macos-latest,   mcpb: darwin, test: true }
+          - { rid: osx-x64,   os: macos-latest,   mcpb: '',     test: false }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - uses: actions/setup-node@v4
+        if: matrix.mcpb != ''
+        with:
+          node-version: 20
+
+      - name: Version from tag
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          grep -q "<Version>$version</Version>" src/HmaMcp/HmaMcp.csproj \
+            || { echo "Tag $GITHUB_REF_NAME doesn't match <Version> in HmaMcp.csproj"; exit 1; }
+          echo "VERSION=$version" >> "$GITHUB_ENV"
+
+      - name: Publish (self-contained)
+        run: dotnet publish src/HmaMcp -c Release -r ${{ matrix.rid }} --self-contained true -o dist/hma-mcp
+
+      - name: MCP handshake
+        if: matrix.test
+        run: |
+          exe=dist/hma-mcp/hma-mcp
+          [ -f "$exe.exe" ] && exe="$exe.exe"
+          python3 tests/smoke.py "$exe"
+
+      - name: Archive
+        run: |
+          cp LICENSE README.md dist/hma-mcp/
+          mkdir -p out
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            pwsh -NoProfile -Command "Compress-Archive -Path dist/hma-mcp -DestinationPath out/hma-mcp-${{ matrix.rid }}.zip"
+          else
+            tar -C dist -czf out/hma-mcp-${{ matrix.rid }}.tar.gz hma-mcp
+          fi
+
+      - name: MCPB bundle
+        if: matrix.mcpb != ''
+        run: |
+          mkdir -p bundle
+          cp -R dist/hma-mcp bundle/server
+          cp assets/icon.png bundle/icon.png
+          sed -e "s/@VERSION@/$VERSION/" -e "s/@PLATFORM@/${{ matrix.mcpb }}/" packaging/manifest.json > bundle/manifest.json
+          npx -y @anthropic-ai/mcpb@latest validate bundle/manifest.json
+          npx -y @anthropic-ai/mcpb@latest pack bundle out/hma-mcp-${{ matrix.mcpb }}.mcpb
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.rid }}
+          path: out/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+
+      - name: server.json for the MCP Registry
+        run: |
+          python3 packaging/make_server_json.py "${GITHUB_REF_NAME#v}" "$GITHUB_REF_NAME" out > out/server.json
+          cat out/server.json
+          (cd out && sha256sum * > SHA256SUMS.txt)
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=".github/release-notes/$GITHUB_REF_NAME.md"
+          if [ -f "$notes" ]; then flag=(--notes-file "$notes"); else flag=(--generate-notes); fi
+          gh release create "$GITHUB_REF_NAME" out/* --title "hma-mcp $GITHUB_REF_NAME" "${flag[@]}"
+
+      # The registry only stores server.json; the bundles it points to are the release assets above.
+      # mcp-publisher is pinned and its signature checked, as the registry's docs recommend.
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+
+      - name: Publish to the MCP Registry
+        env:
+          MCP_PUBLISHER_VERSION: v1.8.1
+        run: |
+          set -euo pipefail
+          archive="mcp-publisher_linux_amd64.tar.gz"
+          base_url="https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}"
+          curl --fail --location --silent --show-error --output "$archive" "$base_url/$archive"
+          curl --fail --location --silent --show-error --output "$archive.sigstore.json" "$base_url/$archive.sigstore.json"
+          cosign verify-blob --bundle "$archive.sigstore.json"             --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/${MCP_PUBLISHER_VERSION}"             --certificate-oidc-issuer "https://token.actions.githubusercontent.com" "$archive"
+          tar xzf "$archive" mcp-publisher
+          cp out/server.json server.json
+          ./mcp-publisher validate
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish

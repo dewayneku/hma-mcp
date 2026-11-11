@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 640" width="1280" height="640">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#14112b"/>
+      <stop offset="1" stop-color="#0b1a2e"/>
+    </linearGradient>
+    <linearGradient id="title" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c9d4ff"/>
+    </linearGradient>
+    <pattern id="grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <path d="M24 0H0V24" fill="none" stroke="#ffffff" stroke-opacity="0.04"/>
+    </pattern>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <rect width="1280" height="640" fill="url(#grid)"/>
+  <g transform="translate(0 110)">
+
+  <!-- left: name and tagline -->
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace">
+    <text x="72" y="150" font-size="86" font-weight="700" fill="url(#title)" letter-spacing="-2">hma<tspan fill="#ff5c7a">-</tspan>mcp</text>
+    <text x="76" y="200" font-size="25" fill="#aab4d8">Let your AI assistant hack GBA ROMs,</text>
+    <text x="76" y="234" font-size="25" fill="#aab4d8">powered by <tspan fill="#ffd166">HexManiacAdvance</tspan>.</text>
+
+    <!-- chips -->
+    <g font-size="17" font-weight="600">
+      <rect x="76" y="268" width="96" height="34" rx="17" fill="#ff5c7a" fill-opacity="0.15" stroke="#ff5c7a" stroke-opacity="0.6"/>
+      <text x="124" y="291" text-anchor="middle" fill="#ff8fa3">tables</text>
+      <rect x="184" y="268" width="104" height="34" rx="17" fill="#4cc9f0" fill-opacity="0.15" stroke="#4cc9f0" stroke-opacity="0.6"/>
+      <text x="236" y="291" text-anchor="middle" fill="#7fdcf7">scripts</text>
+      <rect x="300" y="268" width="116" height="34" rx="17" fill="#ffd166" fill-opacity="0.15" stroke="#ffd166" stroke-opacity="0.6"/>
+      <text x="358" y="291" text-anchor="middle" fill="#ffe08f">repoints</text>
+      <rect x="428" y="268" width="92" height="34" rx="17" fill="#7ee081" fill-opacity="0.15" stroke="#7ee081" stroke-opacity="0.6"/>
+      <text x="474" y="291" text-anchor="middle" fill="#a6eea8">undo</text>
+    </g>
+  </g>
+
+  <!-- right: a hex editor panel -->
+  <g transform="translate(700 48)" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace">
+    <rect width="512" height="264" rx="14" fill="#0a0f1f" stroke="#2a3358"/>
+    <rect width="512" height="38" rx="14" fill="#161d38"/>
+    <rect y="24" width="512" height="14" fill="#161d38"/>
+    <circle cx="22" cy="19" r="6" fill="#ff5c7a"/>
+    <circle cx="42" cy="19" r="6" fill="#ffd166"/>
+    <circle cx="62" cy="19" r="6" fill="#7ee081"/>
+    <text x="256" y="25" text-anchor="middle" font-size="14" fill="#7b86b3">firered.gba</text>
+
+    <!-- anchor label -->
+    <rect x="18" y="52" width="330" height="26" rx="6" fill="#ffd166" fill-opacity="0.14"/>
+    <text x="28" y="70" font-size="15" fill="#ffd166">^data.pokemon.stats / BULBASAUR</text>
+
+    <g font-size="16">
+      <text x="18" y="108" fill="#55608c">2547A0</text>
+      <text x="96" y="108" fill="#c9d4ff">2D 31 31 2D 41 41 0C 03 2D 40 00 01</text>
+      <text x="18" y="138" fill="#55608c">2547AC</text>
+      <text x="96" y="138" fill="#c9d4ff">00 00 00 00 1F 14 46 03 01 07 41 00</text>
+      <text x="18" y="168" fill="#55608c">2547B8</text>
+      <text x="96" y="168" fill="#c9d4ff">00 03 00 00 3C 3E 3F 3C 50 50 0C 03</text>
+      <text x="18" y="198" fill="#55608c">2547C4</text>
+      <text x="96" y="198" fill="#c9d4ff">2D 8D 00 05 00 00 00 00 1F 14 46 03</text>
+    </g>
+    <!-- highlighted byte with glow -->
+    <rect x="94" y="91" width="26" height="23" rx="4" fill="#ff5c7a" fill-opacity="0.25" stroke="#ff5c7a" filter="url(#glow)"/>
+
+    <!-- assistant line -->
+    <rect x="18" y="216" width="476" height="34" rx="8" fill="#4cc9f0" fill-opacity="0.10" stroke="#4cc9f0" stroke-opacity="0.35"/>
+    <text x="32" y="238" font-size="15" fill="#7fdcf7">hp</text>
+    <text x="58" y="238" font-size="15" fill="#aab4d8">45 → 60   · BULBASAUR · 1 undo step</text>
+  </g>
+</g>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace" font-size="22">
+    <line x1="76" y1="512" x2="1212" y2="512" stroke="#2a3358"/>
+    <text x="76" y="556" fill="#7b86b3">github.com/dewayneku/<tspan fill="#c9d4ff">hma-mcp</tspan></text>
+    <text x="1212" y="556" text-anchor="end" fill="#7b86b3">MCP server · FireRed · Emerald · Ruby · Sapphire</text>
+  </g>
+</svg>

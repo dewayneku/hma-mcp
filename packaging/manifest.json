@@ -1,0 +1,37 @@
+{
+  "manifest_version": "0.3",
+  "name": "hma-mcp",
+  "display_name": "HexManiacAdvance (hma-mcp)",
+  "version": "@VERSION@",
+  "description": "Hack GBA Pokémon ROMs through HexManiacAdvance's engine: tables, maps, scripts, text, repointing, undo.",
+  "long_description": "Reads and edits FireRed, LeafGreen, Emerald, Ruby and Sapphire ROMs (and hacks of them) with the same anchors, tables, script compiler and repointing as the HexManiacAdvance editor. Nothing is written until you save, the first save backs up the original, and every edit is one undo step. Bring your own ROM dump.",
+  "author": {
+    "name": "dewayneku",
+    "url": "https://github.com/dewayneku"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dewayneku/hma-mcp"
+  },
+  "homepage": "https://github.com/dewayneku/hma-mcp",
+  "documentation": "https://github.com/dewayneku/hma-mcp#readme",
+  "support": "https://github.com/dewayneku/hma-mcp/issues",
+  "icon": "icon.png",
+  "license": "MIT",
+  "keywords": ["pokemon", "gba", "rom-hacking", "hexmaniacadvance"],
+  "server": {
+    "type": "binary",
+    "entry_point": "server/hma-mcp",
+    "mcp_config": {
+      "command": "${__dirname}/server/hma-mcp",
+      "args": [],
+      "env": {},
+      "platform_overrides": {
+        "win32": { "command": "${__dirname}/server/hma-mcp.exe" }
+      }
+    }
+  },
+  "compatibility": {
+    "platforms": ["@PLATFORM@"]
+  }
+}

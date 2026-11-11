@@ -57,7 +57,21 @@ These are real results from a FireRed (U) 1.0 test run:
 
 ## Quick start
 
-You'll need the [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0) and a ROM you dumped yourself.
+You'll need a ROM you dumped yourself.
+
+### 1. Get the server
+
+**Download** the latest [release](https://github.com/dewayneku/hma-mcp/releases/latest). The builds are self-contained, so you don't need .NET installed.
+
+| You use | Download |
+|---|---|
+| Claude Desktop | the `.mcpb` for your system (`win32`, `darwin` for Apple Silicon Macs, `linux`), then double-click it |
+| Anything else | `hma-mcp-<system>.zip` / `.tar.gz`, unpacked somewhere permanent, e.g. `%LOCALAPPDATA%\hma-mcp` or `~/.local/share/hma-mcp` |
+
+Keep the `hma-mcp` executable next to its `resources/` folder. On macOS, a downloaded build is quarantined until you run `xattr -dr com.apple.quarantine <folder>`.
+
+<details>
+<summary><b>Or build it from source</b> (needs the <a href="https://dotnet.microsoft.com/download/dotnet/8.0">.NET 8 SDK</a>)</summary>
 
 ```bash
 git clone --recurse-submodules https://github.com/dewayneku/hma-mcp.git
@@ -65,15 +79,10 @@ cd hma-mcp
 dotnet publish src/HmaMcp -c Release -o ~/.local/share/hma-mcp
 ```
 
-On Windows, `-o %LOCALAPPDATA%\hma-mcp` is a good spot.
-
-<details>
-<summary><b>Why publish outside the repo?</b></summary>
-
-An MCP client keeps the server running, and on Windows a running `.exe` can't be overwritten, so pointing a client at `bin/` breaks your next build. The published folder holds `hma-mcp` (`hma-mcp.exe` on Windows) and a `resources/` folder with HMA's game reference data. Keep them together.
-
-To update: pull, close your MCP client (or start a new session), and run the same `publish` command again.
+On Windows, `-o %LOCALAPPDATA%\hma-mcp` is a good spot. Publish outside the repo: an MCP client keeps the server running, and on Windows a running `.exe` can't be overwritten, so pointing a client at `bin/` breaks your next build. To update, pull, close your MCP client (or start a new session), and run the same `publish` command again.
 </details>
+
+### 2. Connect your client
 
 **Claude Code:**
 
@@ -83,7 +92,7 @@ claude mcp add --scope user hma -- "C:/Users/you/AppData/Local/hma-mcp/hma-mcp.e
 
 `--scope user` makes it available in every project. Servers load when a session starts, so open a new one afterwards.
 
-**Claude Desktop and other MCP clients:**
+**Claude Desktop** (if you didn't use the `.mcpb`) **and other MCP clients:**
 
 ```json
 {

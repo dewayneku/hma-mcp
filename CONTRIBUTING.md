@@ -48,3 +48,8 @@ Say in the PR which games you tested with.
 ## Bugs in HMA itself
 
 If a problem comes from HexManiacAdvance rather than hma-mcp, add it to [docs/hma-upstream-notes.md](docs/hma-upstream-notes.md) with where it is, what goes wrong, and a suggested fix.
+
+## Releasing
+
+1. Set `<Version>` in `src/HmaMcp/HmaMcp.csproj` and write `.github/release-notes/v<version>.md`.
+2. Push a tag `v<version>`. The [release workflow](.github/workflows/release.yml) builds and tests self-contained servers for Windows, Linux and macOS, packs `.mcpb` bundles, and publishes the GitHub release, then publishes its `server.json` to the [MCP Registry](https://registry.modelcontextprotocol.io).
