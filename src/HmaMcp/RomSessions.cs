@@ -112,7 +112,8 @@ public sealed class RomSessions {
       Map editing: add_map_event / remove_map_event for NPCs, warps, triggers and signs (move or change
       one with write_table_field on the list map_events gives); read_map_blocks + view_blockset to find
       block ids, paint_map_blocks to place them; resize_map. New maps: create_map (modeled on an existing
-      map), then connect_maps / disconnect_maps, warps, add_fly_spot and paint_town_map. NPC looks:
+      map), then connect_maps / disconnect_maps, warps, add_fly_spot and paint_town_map; a new place name:
+      add_region_name (the name list can't grow: it reuses a free slot). NPC looks:
       view_overworld_sprites. Blocks: read_block / write_block (tiles, behavior, layer), view_tiles.
       Custom art: import_tileset turns PNG parts into a map's own tileset (one call with every part the map
       needs); paint the block ids it returns with paint_map_blocks.

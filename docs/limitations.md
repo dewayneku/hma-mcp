@@ -36,7 +36,8 @@ Emerald (U) (BPEE0), 2026-11-10, with `tests/smoke_emerald.py`: Treecko's type a
 - **Imported tilesets have no animation** (e.g. moving water), and ground parts fill transparent pixels with the cell's main color.
 - **Primary-tileset blocks are shared.** `write_block` on a primary block (grass, paths) changes it on every map using that tileset.
 - **Indoor maps share their town's name**, as in the game's data; `find_map` shows each map's `type` (town, route, indoor, ...) to tell them apart.
-- **New region names can't be added.** The region name list (`data.maps.names`) has a fixed size that the game's code relies on. A new map can use an existing name; for its own Fly spot and Town Map squares, use a name no other Fly spot uses.
+- **The region name list can't grow.** Its size is built into the game's code (the number after the last name means "no name", and the Town Map, Fly, map popups and summary screens check against it). `add_region_name` gives a new name to a free slot instead: FireRed has 3 (spare SEVII ISLE names), Emerald over 100 (FireRed's Kanto names, which it only shows as the met location of traded Pokémon). Growing the list needs code patches, which hma-mcp doesn't do.
+- **Emerald's Fly table covers only its towns and cities** (region slots 0-49), so a map with another name can't be a Fly destination there; give it one of those names, or rename one of those slots.
 - **Fly needs the visit flag.** `add_fly_spot` adds the destination; in the game it appears in the Fly menu after the player has been there.
 - **Nested data is one call deeper.** `read_table` shows a nested table as `list : <3C8E60>`; read or write its rows with that address as the table. An empty pointer gets new data with `write_table_field ... value="new"`.
 

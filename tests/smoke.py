@@ -30,7 +30,8 @@ expected = {"open_rom", "rom_info", "save", "undo", "redo", "close_rom", "list_a
             "add_map_event", "remove_map_event", "read_map_blocks", "paint_map_blocks", "view_blockset", "resize_map",
             "create_map", "connect_maps", "disconnect_maps",
             "add_fly_spot", "read_town_map", "paint_town_map", "view_overworld_sprites",
-            "read_block", "write_block", "list_block_behaviors", "view_tiles", "import_tileset"}
+            "read_block", "write_block", "list_block_behaviors", "view_tiles", "import_tileset",
+            "list_region_names", "add_region_name"}
 assert expected <= set(names), f"missing tools: {expected - set(names)}"
 c.call("rom_info", expect_error=True)
 
@@ -453,6 +454,18 @@ assert png_util.size(png) == (320, 320)
 c.call("import_tileset", expect_error=True, map=n["id"], file=os.path.join(work, "nope.png"))
 c.call("import_tileset", expect_error=True, map=n["id"], file=tileset_png, parts=[{"x": 0, "y": 0, "width": 16, "height": 16, "layer": "object", "under": "2C0"}])  # under must be primary
 c.call("import_tileset", expect_error=True, map=n["id"], file=tileset_png, parts=[{"x": 100, "y": 0, "width": 16, "height": 16}])  # outside the image
+
+# --- region names: the list can't grow, so a new name goes into a slot nothing uses (FireRed: 3 spare SEVII ISLE names)
+names = c.call("list_region_names", free_only=True)
+assert names["total"] == 109 and names["free"] == 3 and names["names"][0]["name"] == "SEVII ISLE 22", names
+added = c.call("add_region_name", name="MISTY HOLLOW")
+assert added["slot"] == 83 and added["replaced"] == "SEVII ISLE 22", added
+c.call("paint_town_map", region="kanto", x=0, y=0, name="#83")
+used = c.call("list_region_names", filter="MISTY")["names"][0]
+assert used["town_map_squares"] == 1 and not used["free"], used
+c.call("add_region_name", expect_error=True, name="")
+c.call("undo"); c.call("undo")
+assert c.call("list_region_names", free_only=True)["free"] == 3
 
 # --- save round-trip: reopen and check every edit stuck, and the metadata kept our anchor
 saved = c.call("save")

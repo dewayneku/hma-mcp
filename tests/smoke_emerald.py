@@ -115,6 +115,13 @@ try:
     assert c.call("read_block", map=n["id"], block="200")["tileset"] == "secondary"
     c.call("undo"); c.call("undo"); c.call("undo")
 
+    # --- region names: Emerald keeps FireRed's Kanto names (slots 88+), so a new name goes there first
+    added = c.call("add_region_name", name="MISTY HOLLOW")
+    assert added["slot"] == 88 and added["replaced"] == "PALLET TOWN" and "met location" in added["warning"], added
+    n = c.call("create_map", like="0.16", width=8, height=8, name="MISTY HOLLOW")
+    assert "slots 0-49" in c.call("add_fly_spot", expect_error=True, map=n["id"], x=1, y=1)  # Emerald's Fly table: towns and cities only
+    c.call("undo"); c.call("undo")
+
     # --- save -> reopen keeps the edit
     c.call("save")
     c.call("close_rom")

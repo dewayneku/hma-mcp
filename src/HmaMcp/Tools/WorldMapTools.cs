@@ -33,7 +33,8 @@ public static class WorldMapTools {
       int region = s.Model[m.Header + regionField.Offset] - (s.Model.IsFRLG() ? 88 : 0);
       var connections = GetTable(s, FlyConnections);
       if (region < 0 || region >= connections.ElementCount)
-         throw new McpException($"{m.Id}'s region ({regionName}) has no entry in {FlyConnections}, so it can't be a Fly destination in this game.");
+         throw new McpException($"{m.Id}'s region ({regionName}, slot {region}) can't be a Fly destination: this game's Fly table ({FlyConnections}) only covers slots 0-{connections.ElementCount - 1}" +
+            (s.Model.IsFRLG() ? "." : " (Emerald's towns and cities). To fly there, give the map one of those names, or rename one of those slots with add_region_name slot=N."));
       var conFields = Fields(connections);
       Field F(ITableRun run, string name) => Fields(run).First(f => f.Key == name);
       int flight = Convert.ToInt32(ReadField(s, connections, region, F(connections, "flight")));
@@ -71,11 +72,10 @@ public static class WorldMapTools {
       var rows = new List<string>();
       var used = new SortedDictionary<int, string>();
       var names = GetTable(s, Names);
-      var index = NameIndex(s);
       for (int r = 0; r < run.ElementCount; r++) {
          var sb = new StringBuilder();
          foreach (var f in fields) {
-            int v = Value(s, run, r, f, index);
+            int v = Cell(s, run, r, f);
             if (sb.Length > 0) sb.Append(' ');
             if (v >= none || v < 0) sb.Append("--");
             else {
@@ -101,17 +101,17 @@ public static class WorldMapTools {
       [Description("Region grid, e.g. 'kanto' or 'hoenn'")] string region,
       [Description("Column")] int x,
       [Description("Row")] int y,
-      [Description("Region name from data.maps.names (e.g. 'ROUTE 22'), or 'none'")] string name,
+      [Description("Region name from data.maps.names (e.g. 'ROUTE 22'), a slot number '#34' (for names that repeat), or 'none'")] string name,
       [Description("Width in squares")] int width = 1,
       [Description("Height in squares")] int height = 1) => sessions.Edit(s => {
       var (run, fields, none) = Grid(s, region);
       if (x < 0 || y < 0 || width < 1 || height < 1 || x + width > fields.Count || y + height > run.ElementCount)
          throw new McpException($"The rectangle doesn't fit in the {fields.Count}x{run.ElementCount} grid.");
-      var value = name.Trim().Equals("none", StringComparison.OrdinalIgnoreCase) ? none.ToString() : name;
+      int slot = name.Trim().Equals("none", StringComparison.OrdinalIgnoreCase) ? none : Slot(s, name);
       for (int r = y; r < y + height; r++)
          for (int c = x; c < x + width; c++)
-            WriteField(s, run, r, fields[c], value);
-      return Json.Of(new { region = s.Anchor(run.Start), x, y, width, height, name = value == none.ToString() ? "none" : name });
+            s.Token.ChangeData(s.Model, run.Start + r * run.ElementLength + fields[c].Offset, (byte)(slot + SectionOffset(s)));
+      return Json.Of(new { region = s.Anchor(run.Start), x, y, width, height, name = slot == none ? "none" : $"{slot:D3} {SlotName(s, slot)}" });
    });
 
    static IEnumerable<string> Regions(RomSession s) =>
@@ -129,18 +129,101 @@ public static class WorldMapTools {
       return (run, fields, GetTable(s, Names).ElementCount);
    }
 
-   /// <summary>Region name -> index into data.maps.names (first index when a name repeats).</summary>
-   static Dictionary<string, int> NameIndex(RomSession s) {
+   // ---------- region names ----------
+
+   [McpServerTool(Name = "list_region_names", ReadOnly = true), Description(
+      "The region names (data.maps.names: the name a map shows when you enter it, on the Town Map, and as a Pokémon's met location), one per slot, " +
+      "with how many maps use each, whether it has a Fly spot and Town Map squares. 'free' slots are used by none of those: add_region_name reuses them. " +
+      "The list's size is fixed by the game's code, so new names go into free slots.")]
+   public static string ListRegionNames(RomSessions sessions,
+      [Description("Part of a name")] string filter = "",
+      [Description("Only free slots")] bool free_only = false) => sessions.With(s => {
+      var usage = Usage(s);
+      var rows = usage.Where(u => (filter.Length == 0 || u.name.Contains(filter, StringComparison.OrdinalIgnoreCase)) && (!free_only || u.free))
+         .Select(u => new { u.slot, u.name, u.maps, u.fly, town_map_squares = u.squares, u.free, u.note }).ToList();
+      return Json.Of(new { total = usage.Count, free = usage.Count(u => u.free), shown = rows.Count, names = rows.Take(250) });
+   });
+
+   [McpServerTool(Name = "add_region_name", Destructive = true), Description(
+      "Give a new region name (e.g. 'MISTY HOLLOW') to a free slot of data.maps.names, since the list itself can't grow. Picks a free slot (no maps, " +
+      "no Fly spot, no Town Map squares) unless you pass one. Then use the name with create_map's name, write_table_field regionSectionID, " +
+      "add_fly_spot and paint_town_map. One undo step.")]
+   public static string AddRegionName(RomSessions sessions,
+      [Description("The new name, in capitals as the game shows names (up to 16 characters fit the map name popup)")] string name,
+      [Description("Slot to use (from list_region_names); -1 picks a free one")] int slot = -1) => sessions.Edit(s => {
+      var text = (name ?? "").Trim();
+      if (text.Length == 0) throw new McpException("Pass a name.");
+      var usage = Usage(s);
+      if (slot < 0) {
+         // Emerald: its leftover Kanto names (slots 88+) are only shown as traded Pokémon's met location, while spare Hoenn
+         // slots (a second METEOR FALLS, MIRAGE ISLAND, ...) can still be shown by special game code. FireRed: any free slot.
+         var pick = usage.Where(u => u.free).OrderBy(u => !s.Model.IsFRLG() && u.slot < 88 ? 1 : 0).ThenBy(u => u.slot).FirstOrDefault();
+         slot = pick?.slot ?? throw new McpException("No free slot: every region name is used by a map, a Fly spot or the Town Map. Pass slot to reuse one anyway (list_region_names).");
+      } else if (slot >= usage.Count) throw new McpException($"slot must be 0 to {usage.Count - 1}.");
+      var before = usage[slot];
       var names = GetTable(s, Names);
-      var nameField = Fields(names).First(x => x.Key == "name");
-      var result = new Dictionary<string, int>();
-      for (int i = 0; i < names.ElementCount; i++) result.TryAdd(NormalizeName(ReadField(s, names, i, nameField)?.ToString() ?? ""), i);
-      return result;
+      WriteField(s, names, slot, Fields(names).First(f => f.Key == "name"), text);
+      return Json.Of(new {
+         slot,
+         name = SlotName(s, slot),
+         replaced = before.name,
+         warning = !before.free ? $"Slot {slot} ({before.name}) was in use ({before.maps} map(s), fly {before.fly}, {before.squares} Town Map square(s)); those now show the new name." : before.note,
+         length_note = text.Length > 16 ? "Longer than 16 characters: it may not fit the map name popup." : null,
+         next = $"Use it: create_map name '{text}', or write_table_field regionSectionID; add_fly_spot; paint_town_map name '#{slot}'.",
+      });
+   });
+
+   sealed record SlotUse(int slot, string name, int maps, bool fly, int squares, bool free, string? note);
+
+   /// <summary>Per slot: maps whose header uses it, a Fly connection, Town Map squares.</summary>
+   static List<SlotUse> Usage(RomSession s) {
+      var names = GetTable(s, Names);
+      int offset = SectionOffset(s);
+      var maps = new int[names.ElementCount];
+      foreach (var m in AllMaps(s)) {
+         var header = TableAt(s, m.Header);
+         var f = header == null ? null : Fields(header).FirstOrDefault(x => x.Key == "regionSectionID");
+         if (f == null) continue;
+         int slot = s.Model[m.Header + f.Offset] - offset;
+         if (slot >= 0 && slot < maps.Length) maps[slot]++;
+      }
+      var fly = new bool[names.ElementCount];
+      var connections = GetTable(s, FlyConnections);
+      var flight = Fields(connections).First(x => x.Key == "flight");
+      for (int i = 0; i < Math.Min(connections.ElementCount, fly.Length); i++) fly[i] = Convert.ToInt32(ReadField(s, connections, i, flight)) != 0;
+      var squares = new int[names.ElementCount];
+      foreach (var region in Regions(s)) {
+         var (run, fields, none) = Grid(s, region);
+         for (int r = 0; r < run.ElementCount; r++)
+            foreach (var f in fields) { int v = Cell(s, run, r, f); if (v >= 0 && v < none) squares[v]++; }
+      }
+      bool emerald = !s.Model.IsFRLG();
+      return Enumerable.Range(0, names.ElementCount).Select(i => {
+         bool free = maps[i] == 0 && !fly[i] && squares[i] == 0;
+         // Emerald keeps FireRed's Kanto names (slots 88+) for the met location of Pokémon traded from FireRed/LeafGreen
+         string? note = !free || !emerald ? null
+            : i >= 88 ? "Kanto name kept for traded Pokémon's met location; renaming changes what those show. Can't be a Fly destination."
+            : "Spare Hoenn slot; special game code may still show it (e.g. MIRAGE ISLAND, the hideouts). Prefer slots 88+.";
+         return new SlotUse(i, SlotName(s, i), maps[i], fly[i], squares[i], free, note);
+      }).ToList();
    }
 
-   /// <summary>The cell's region index into data.maps.names (the enum's stored offset, e.g. FireRed's +88, undone).</summary>
-   static int Value(RomSession s, ITableRun run, int row, Field f, Dictionary<string, int> index) {
-      var text = ReadField(s, run, row, f)?.ToString() ?? "";
-      return index.TryGetValue(NormalizeName(text), out var i) ? i : int.TryParse(text, out var n) ? n : -1;
+   /// <summary>Header and Town Map bytes store a slot plus this offset (FireRed: 88, where its region numbers start).</summary>
+   static int SectionOffset(RomSession s) => s.Model.IsFRLG() ? 88 : 0;
+
+   static int Cell(RomSession s, ITableRun run, int row, Field f) => s.Model[run.Start + row * run.ElementLength + f.Offset] - SectionOffset(s);
+
+   static string SlotName(RomSession s, int slot) {
+      var names = GetTable(s, Names);
+      return slot >= 0 && slot < names.ElementCount ? ReadField(s, names, slot, Fields(names).First(x => x.Key == "name"))?.ToString() ?? "" : "";
+   }
+
+   /// <summary>A region name or '#slot' to its slot (a repeated name: its first slot).</summary>
+   static int Slot(RomSession s, string text) {
+      var t = text.Trim();
+      var names = GetTable(s, Names);
+      if (t.StartsWith('#') && int.TryParse(t[1..], out var n)) return n >= 0 && n < names.ElementCount ? n : throw new McpException($"Slot must be 0 to {names.ElementCount - 1}.");
+      for (int i = 0; i < names.ElementCount; i++) if (NormalizeName(SlotName(s, i)) == NormalizeName(t)) return i;
+      throw new McpException($"No region name '{text}'. See list_region_names, or add one with add_region_name.");
    }
 }

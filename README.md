@@ -131,6 +131,7 @@ Then just ask, for example:
 | 🚪 | `add_map_event` · `remove_map_event` · `resize_map` | Add or remove NPCs, warps, triggers and signs; grow or shrink a map (events and connections stay in place) |
 | 🆕 | `create_map` · `connect_maps` · `disconnect_maps` | New maps modeled on an existing one (its tilesets, music, weather); join or separate neighboring maps, both sides at once |
 | 🕊️ | `add_fly_spot` · `read_town_map` · `paint_town_map` | Make a map a Fly destination; put it on the Town Map |
+| 🏷️ | `list_region_names` · `add_region_name` | Region names (what a map shows on entry, on the Town Map, as a met location): which are free, and new names in free slots |
 | 🧍 | `view_overworld_sprites` | A labeled sheet of NPC sprites, to pick one by number |
 | 🧩 | `read_block` · `write_block` · `list_block_behaviors` · `view_tiles` | What a block is made of (8 tiles, 2 layers) and how it behaves (grass, water, door, ...); change either |
 | 🎨 | `import_tileset` | Turn a top-down PNG tileset (or several images) into a map's own tileset: ground blocks, and objects like trees and houses drawn over them with transparency; colors fitted to the GBA, duplicate and mirrored tiles shared |
@@ -149,7 +150,7 @@ HMA supports FireRed, LeafGreen, Emerald, Ruby and Sapphire, and hacks of them. 
 
 ```mermaid
 flowchart LR
-    A["Claude / any MCP client"] <-- "MCP over stdio" --> B["hma-mcp<br/>(44 tools)"]
+    A["Claude / any MCP client"] <-- "MCP over stdio" --> B["hma-mcp<br/>(46 tools)"]
     B --> C["HexManiac.Core<br/>(HMA's engine, built from source)"]
     C <--> D[("your ROM .gba<br/>+ HMA .toml metadata")]
 ```
