@@ -242,7 +242,7 @@ public static class DataTools {
    // zero-length segments are comments/markers in HMA formats; calculated fields are the exception
    static bool IsHidden(ArrayRunElementSegment seg) => seg.Length == 0 && seg is not ArrayRunCalculatedSegment;
 
-   static int ResolveRow(ITableRun run, string row) {
+   internal static int ResolveRow(ITableRun run, string row) {
       if (TryParseInt(row, out var index)) {
          if (index < 0 || index >= run.ElementCount) throw new McpException($"Row {index} is out of range (0-{run.ElementCount - 1}).");
          return index;

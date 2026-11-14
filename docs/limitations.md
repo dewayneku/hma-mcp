@@ -18,6 +18,8 @@ Tested so far: FireRed (U) 1.0 (BPRE0), 2026-11-10, with these tasks:
 | Scripts | Pallet Town NPC and sign, `scripts.newgame.setflags` | ✅ after fixes: dialogue edit, growth + relocation, undo/redo |
 | Maps | Find Pallet Town and Route 1 by name, list objects/warps/signs/connections, move an NPC | ✅ new `find_map`, `map_events` |
 | Text by address | Read the Pallet Town sign text, grow it (moved, sign pointer updated), undo; line breaks and new boxes | ✅ new `read_text`, `write_text` |
+| Graphics | View Charmander's front/back/shiny sprites, an overworld sprite's frames, a Pokémon icon, the title-screen tilemap; export to PNG, flip and re-import (indexed and truecolor, smart/cautious), edit a palette, undo each | ✅ new `view_image`, `import_image`, `read_palette`, `write_palette` (2026-11-14; Emerald too) |
+| Map pictures | Draw Pallet Town and Route 1 (FireRed), Littleroot Town (Emerald), with and without NPCs and event markers | ✅ new `render_map` |
 | Round trip | save, reopen, re-read every edit, check `.toml` | ✅ moved anchors and free-space start are kept |
 
 Emerald (U) (BPEE0), 2026-11-10, with `tests/smoke_emerald.py`: Treecko's type and a rejected out-of-range speed, Potion price, a trainer team, Route 101 wild data by `where`, Littleroot Town by name and its events, an unchanged NPC script recompiled byte-identical, the town sign grown and moved (pointer updated) then undone, save → reopen. All ✅ with no Emerald-specific fixes needed. Note that species rows 252–276 are the unused `?` slots, so Treecko is row 277.
@@ -54,8 +56,11 @@ Emerald (U) (BPEE0), 2026-11-10, with `tests/smoke_emerald.py`: Treecko's type a
 **What happens:** `msgbox.default <17D866>` with no text block, because HMA hadn't recognized that address as text yet. After any compile of that script it is shown.
 **Workaround:** `read_text` and `write_text` at that address. They find the pointer by searching the ROM when HMA doesn't know it, so a longer text can still be moved safely.
 
-### Graphics are not supported
-No tools yet for viewing or importing sprites, palettes or tilesets.
+### Graphics: what's not covered yet
+- **Sprite size can't change.** An imported image must match the graphic's size (or all its pages side by side / stacked), as in HMA.
+- **Map tiles can't be edited.** `render_map` draws maps; changing blocks, tilesets or the layout is the next map task.
+- **Imports may move compressed graphics.** HMA's LZ compressor packs a little less tightly than the original game's, so even a small edit to a compressed sprite usually moves it to free space (pointers are updated; the result says `sprite_moved_from`). Importing an image identical to what's there writes nothing.
+- **Tilemaps export as plain color images**, not indexed, since their tiles use several palette pages.
 
 ### One ROM at a time
 `open_rom` replaces the open ROM (and refuses if there are unsaved changes).

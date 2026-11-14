@@ -121,7 +121,7 @@ public static class MapTools {
       Fields(header).FirstOrDefault(f => f.Seg is ArrayRunEnumSegment e && e.EnumName == "data.maps.names")
       ?? Fields(header).FirstOrDefault(f => f.Key == "regionSectionID");
 
-   static MapRef FindOne(RomSession s, string map) {
+   internal static MapRef FindOne(RomSession s, string map) {
       var all = AllMaps(s);
       var parts = map.Trim().Split('.', ',', '/', ' ');
       if (parts.Length == 2 && int.TryParse(parts[0], out var bank) && int.TryParse(parts[1], out var num)) {

@@ -45,6 +45,19 @@ class McpClient:
         except ValueError:
             return text
 
+    def call_image(self, tool, /, **args):
+        """Call a tool that returns JSON text plus a PNG image. Returns (json, png_bytes)."""
+        import base64
+        r = self.rpc("tools/call", {"name": tool, "arguments": args})["result"]
+        text = next(b["text"] for b in r["content"] if b["type"] == "text")
+        if not self.quiet:
+            print(f"--- {tool} {'ERROR ' if r.get('isError') else ''}{args}\n{text[:600]}\n")
+        if r.get("isError"):
+            raise AssertionError(f"{tool}: unexpected error: {text}")
+        images = [base64.b64decode(b["data"]) for b in r["content"] if b["type"] == "image" and b["mimeType"] == "image/png"]
+        assert len(images) == 1, f"{tool}: expected one PNG, got {len(images)}"
+        return json.loads(text), images[0]
+
     def close(self):
         self.p.stdin.close()
         self.p.terminate()

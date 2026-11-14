@@ -88,6 +88,12 @@ Each fix is on its own branch off `master` in the fork, so it can become a small
 **Fix idea:** accept both `\n` and `\r\n`; check the end of the input with `StartsWith` instead of the length guard; have callers report bad characters. Small.
 **hma-mcp workaround:** `write_text` and `write_table_field` turn line breaks into explicit `\n`/`\l`/`\pn` codes before calling HMA (the same rules HMA uses), and reject characters the font doesn't have.
 
+### 13. Image import logic is private to the sprite tool view-model, which doesn't follow a moved sprite: open
+**Where:** `ViewModels/Tools/SpriteTool.cs`: `ImportSpriteAndPalette(IFileSystem, short[], int, ImportType)` and the `int[,]` overload are private; the public `TryImport` always picks the palette itself and only takes an unindexed image.
+**Problem:** (a) A headless caller can't import with a chosen palette, or keep an indexed PNG's exact indices, without reflection. (b) After a `Cautious` import that moved the compressed sprite, `SpriteAddress` still held the old address; reading the sprite there found the next run (a palette) instead.
+**Fix idea:** a public import method taking the image, an optional palette address and the import type; have every write path update `SpriteAddress`/`PaletteAddress` when the run moves (as the Greedy path already does). Small to medium. Related to #6.
+**hma-mcp workaround:** `import_image` calls the private overloads by reflection, and finds the sprite and palette again afterwards through a pointer to each.
+
 ---
 
 ## Not yet investigated

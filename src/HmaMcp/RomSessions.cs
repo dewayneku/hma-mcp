@@ -105,6 +105,10 @@ public sealed class RomSessions {
       Workflow: open_rom -> explore (rom_info, list_anchors, describe_table, read_table, decompile_script,
       read_text, find_map, map_events) -> edit (write_table_field, compile_script, write_text, write_bytes,
       hma_edit) -> save. For anything on a map (NPCs, signs, warps, its scripts), start with find_map.
+      Graphics: view_image shows a sprite/tileset/tilemap/palette as an image you can see (graphics tables
+      such as graphics.pokemon.sprites.front take a row, e.g. CHARMANDER); render_map draws a map. To change
+      art, save it with view_image's save_to, edit the PNG, and import_image it back; read_palette and
+      write_palette edit colors. Show the user the image before and after a graphics change.
       Nothing touches the file on disk until save is called; save makes a timestamped backup of the
       original ROM the first time and writes HMA's .toml metadata next to the ROM, so the HMA GUI
       sees the same anchors. Every edit tool is one undo step (undo / redo).

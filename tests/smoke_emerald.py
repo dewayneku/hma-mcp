@@ -13,6 +13,7 @@ import sys
 import tempfile
 
 from mcp_client import McpClient
+import png_util
 
 exe = os.path.abspath(sys.argv[1])
 work = tempfile.mkdtemp(prefix="hma-mcp-emerald-")
@@ -64,6 +65,15 @@ try:
     assert f"<{w['address']}>" in c.call("decompile_script", address=sign)["script"]
     c.call("undo")
     assert c.call("read_text", address=text_at)["text"] == t["text"]
+
+    # --- graphics: Treecko's sprite and palette, an overworld frame, and Littleroot drawn with its NPCs
+    sprite, png = c.call_image("view_image", address="graphics.pokemon.sprites.front", row="TREECKO")
+    assert sprite["size"] == "64x64" and png_util.size(png) == (256, 256), sprite
+    assert len(c.call("read_palette", address=sprite["palette"])["colors"]) == 16
+    ow = c.call("view_image", address="graphics.overworld.sprites", row="0")
+    assert ow["size"] == "16x32" and ow["pages"] > 1, ow
+    m, png = c.call_image("render_map", map="0.9", events="objects")
+    assert m["size_blocks"] == "20x20" and png_util.size(png) == (320, 320), m
 
     # --- save -> reopen keeps the edit
     c.call("save")

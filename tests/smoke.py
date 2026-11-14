@@ -13,6 +13,7 @@ import sys
 import tempfile
 
 from mcp_client import McpClient
+import png_util
 
 exe = os.path.abspath(sys.argv[1])
 source_rom = sys.argv[2] if len(sys.argv) > 2 else None
@@ -24,7 +25,8 @@ print(len(names), "tools:", ", ".join(names), "\n")
 expected = {"open_rom", "rom_info", "save", "undo", "redo", "close_rom", "list_anchors", "resolve",
             "describe_table", "read_table", "write_table_field", "read_bytes", "write_bytes",
             "find_free_space", "hma_edit", "decompile_script", "compile_script",
-            "find_map", "map_events", "read_text", "write_text"}
+            "find_map", "map_events", "read_text", "write_text",
+            "view_image", "read_palette", "write_palette", "import_image", "render_map"}
 assert expected <= set(names), f"missing tools: {expected - set(names)}"
 c.call("rom_info", expect_error=True)
 
@@ -223,6 +225,59 @@ free = c.call("find_free_space", length=32)["address"]
 c.call("hma_edit", address=free, text='^test.hello"" "Hello from hma-mcp!" ')
 res = c.call("resolve", target="test.hello")
 assert res["run"]["kind"] == "text", res
+
+# --- graphics (row 4 is Charmander, renamed CHARMY above): sprites and palettes as PNG, import with exact indices or color matching, map pictures
+front, png = c.call_image("view_image", address="graphics.pokemon.sprites.front", row="4",
+                          save_to=os.path.join(work, "charmander.png"))
+assert front["kind"] == "sprite" and front["size"] == "64x64" and front["compressed"], front
+assert png_util.size(png) == (256, 256), "preview is drawn at 4x"
+pal = c.call("read_palette", address=front["palette"])
+assert len(pal["colors"]) == 16 and pal["colors"][7] == "#F76300", pal["colors"]  # Charmander orange, not swapped to blue
+assert any(u["address"] == front["address"] for u in pal["used_by"])
+back = c.call("view_image", address="graphics.pokemon.sprites.back", row="4")  # text part only
+back_bytes = c.call("read_bytes", address=back["address"], length=64)
+front_bytes = c.call("read_bytes", address=front["address"], length=64)
+# the saved PNG is indexed with the sprite's palette; importing it unchanged writes nothing
+w, h, ct, plte, rows = png_util.read(os.path.join(work, "charmander.png"))
+assert (w, h, ct, len(plte)) == (64, 64, 3, 48), (w, h, ct, len(plte))
+r, _ = c.call_image("import_image", address="graphics.pokemon.sprites.front", row="4", file=os.path.join(work, "charmander.png"))
+assert r["changed"] is False and c.call("read_bytes", address=front["address"], length=64) == front_bytes, r
+# flipped, same palette: exact indices, the shared palette and the back sprite are untouched
+png_util.write(os.path.join(work, "flip.png"), w, h, ct, plte, [row[::-1] for row in rows])
+r, _ = c.call_image("import_image", address="graphics.pokemon.sprites.front", row="4", file=os.path.join(work, "flip.png"))
+assert r["changed"] and r["palette_changed"] is False and r["mode"].startswith("exact"), r
+assert c.call("read_bytes", address=back["address"], length=64) == back_bytes
+assert c.call("read_palette", address=front["palette"])["colors"] == pal["colors"]
+c.call("undo")
+assert c.call("read_bytes", address=front["address"], length=64) == front_bytes
+# a truecolor PNG is matched to the palette
+rgb = [bytearray(b"".join(plte[i * 3:i * 3 + 3] for i in row[::-1])) for row in rows]
+png_util.write(os.path.join(work, "flip_rgb.png"), w, h, 2, None, rgb)
+r, _ = c.call_image("import_image", address="graphics.pokemon.sprites.front", row="4", file=os.path.join(work, "flip_rgb.png"), mode="cautious")
+assert r["changed"] and r["palette_changed"] is False, r
+c.call("undo")
+assert c.call("read_bytes", address=front["address"], length=64) == front_bytes
+c.call("import_image", expect_error=True, address="graphics.pokemon.sprites.front", row="4", file=os.path.join(work, "nope.png"))
+c.call("import_image", expect_error=True, address="graphics.pokemon.sprites.front", row="4", file=os.path.join(work, "flip.png"), mode="bold")
+c.call("view_image", expect_error=True, address="graphics.pokemon.sprites.front")  # a table needs a row
+c.call("view_image", expect_error=True, address="data.pokemon.stats", row="1")  # not graphics
+# palettes: write, see it, undo
+c.call("write_palette", address=front["palette"], colors=[pal["colors"][0], "#000000"])
+assert c.call("read_palette", address=front["palette"])["colors"][1] == "#000000"
+c.call("write_palette", expect_error=True, address=front["palette"], colors=["red"])
+c.call("undo")
+assert c.call("read_palette", address=front["palette"])["colors"] == pal["colors"]
+# palette tables use the sprite's row; overworld rows reach their frames through nested pointers
+shiny = c.call("view_image", address="graphics.pokemon.sprites.front", row="4", palette="graphics.pokemon.palettes.shiny")
+assert shiny["palette"] != front["palette"], shiny
+ow = c.call("view_image", address="graphics.overworld.sprites", row="0")
+assert ow["size"] == "16x32" and ow["pages"] > 1, ow
+# maps: 16 px per block
+m, png = c.call_image("render_map", map="3.0")
+assert m["size_blocks"] == "24x20" and png_util.size(png) == (384, 320), m
+m, png = c.call_image("render_map", map="3.0", events="none", scale=2)
+assert png_util.size(png) == (768, 640)
+c.call("render_map", expect_error=True, map="3.0", events="some")
 
 # --- save round-trip: reopen and check every edit stuck, and the metadata kept our anchor
 saved = c.call("save")
