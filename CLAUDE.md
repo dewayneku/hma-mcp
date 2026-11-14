@@ -6,7 +6,8 @@ MCP server (C#, .NET 8) exposing HexManiacAdvance's core engine as tools for GBA
 
 - Build: `dotnet build src/HmaMcp -c Release` (the .NET SDK is at `C:\Program Files\dotnet`; add it to PATH in Git Bash if `dotnet` isn't found).
 - Quick test (no ROM): `python tests/smoke.py src/HmaMcp/bin/Release/net8.0/hma-mcp.exe`
-- Full test: `python tests/smoke.py <exe> <firered.gba>`. It copies the ROM to a temp folder first.
+- Full test: `python tests/smoke.py <exe> <firered.gba>`. It copies the ROM to a temp folder first. Also `tests/smoke_emerald.py <exe> <emerald.gba>` and, for HTTP mode, `cd tests && python smoke_http.py <exe> [firered.gba]`.
+- File paths in tools go through `Paths.Resolve` (it enforces `--rom-dir`); show paths with `Paths.Show`.
 - The installed server Claude Code uses is `%LOCALAPPDATA%\hma-mcp\hma-mcp.exe`, registered as user-scope MCP server `hma`. To ship a change: `dotnet publish src/HmaMcp -c Release -o "$LOCALAPPDATA/hma-mcp"`. If a session is using the server, the exe is locked; the change takes effect in the next session. To install while it's running, use `scripts/install.ps1` (sets locked files aside).
 
 ## Rules

@@ -50,6 +50,11 @@ Emerald (U) (BPEE0), 2026-11-10, with `tests/smoke_emerald.py`: Treecko's type a
 - **Sprite sizes are fixed by the game.** An imported image must match the graphic's size (or all its pages side by side / stacked); Pokémon sprites are always 64x64, for example.
 - **Imports may move compressed graphics.** HMA's LZ compressor packs a little less tightly than the original game's, so even a small edit to a compressed sprite usually moves it to free space (pointers are updated; the result says `sprite_moved_from`). Importing an image identical to what's there writes nothing.
 
+### HTTP mode
+- **One shared session.** Every client connected to one HTTP server works on the same open ROM. Run one server per person.
+- **Not tested with ChatGPT itself**, only with the included HTTP test client (`tests/smoke_http.py`). ChatGPT needs a paid plan with Developer Mode, and its connector setup changes often.
+- **The folder check is by path.** A link (symlink or junction) inside the ROM folder that points elsewhere isn't blocked; don't put one there.
+
 ### One ROM at a time
 One ROM is open per session; `open_rom` on another asks you to save or discard first. Copying data between two ROMs isn't covered.
 

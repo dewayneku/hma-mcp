@@ -146,8 +146,8 @@ public static class GraphicsTools {
       [Description("Palette page")] int palette_page = 0) => sessions.Edit(s => {
       if (!Enum.TryParse<ImportType>(mode, true, out var importType) || importType == ImportType.Unknown)
          throw new McpException($"mode must be smart, greedy or cautious, not '{mode}'.");
-      var path = Path.GetFullPath(file ?? "");
-      if (!File.Exists(path)) throw new McpException($"File not found: {path}");
+      var path = Paths.Resolve(file ?? "");
+      if (!File.Exists(path)) throw new McpException($"File not found: {Paths.Show(path)}");
       var image = Png.Decode(File.ReadAllBytes(path));
 
       var start = ResolveGraphic(s, address, row);
@@ -181,7 +181,7 @@ public static class GraphicsTools {
          }
          if (unchanged) {
             return SpriteImage(s, tool, 0, "", new Dictionary<string, object?> {
-               ["imported"] = path,
+               ["imported"] = Paths.Show(path),
                ["changed"] = false,
                ["note"] = "The image is identical to what's in the ROM; nothing was written.",
             });
@@ -214,7 +214,7 @@ public static class GraphicsTools {
       tool.SpritePage = page;
       var colorsAfter = s.Model.GetNextRun(tool.PaletteAddress) is IPaletteRun pa ? pa.AllColors(s.Model).ToArray() : Array.Empty<short>();
       var info = new Dictionary<string, object?> {
-         ["imported"] = path,
+         ["imported"] = Paths.Show(path),
          ["size"] = $"{image.Width}x{image.Height}",
          ["changed"] = true,
          ["mode"] = modeUsed,
@@ -432,11 +432,11 @@ public static class GraphicsTools {
 
    internal static CallToolResult Result(Dictionary<string, object?> info, short[] pixels, int width, int height, int scale, string saveTo, byte[]? fileBytes = null) {
       if (!string.IsNullOrWhiteSpace(saveTo)) {
-         var path = Path.GetFullPath(saveTo);
+         var path = Paths.Resolve(saveTo);
          if (!path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) throw new McpException("save_to must be a .png path.");
          Directory.CreateDirectory(Path.GetDirectoryName(path)!);
          File.WriteAllBytes(path, fileBytes ?? Png.Encode(pixels, width, height));
-         info["saved_to"] = path;
+         info["saved_to"] = Paths.Show(path);
       }
       info["preview_scale"] = scale;
       return new CallToolResult {

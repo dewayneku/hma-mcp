@@ -20,7 +20,8 @@ Requires the .NET 8 SDK. HMA's core is built from the `external/HexManiacAdvance
 
 | Path | What's there |
 |---|---|
-| `src/HmaMcp/Program.cs` | Server startup (stdio transport) |
+| `src/HmaMcp/Program.cs` | Server startup: stdio, or `--http` (Streamable HTTP with a token gate) |
+| `src/HmaMcp/Paths.cs` | Every file path a tool uses; enforces `--rom-dir` |
 | `src/HmaMcp/RomSessions.cs` | The open ROM, address/anchor parsing, undo grouping |
 | `src/HmaMcp/Tools/` | The MCP tools: `RomTools`, `DataTools`, `ScriptTools`, `MapTools`, `TextTools`, `GraphicsTools`, `MapEditTools`, `WorldMapTools`, `BlockTools`, `TilesetImportTools` |
 | `src/HmaMcp/Png.cs` | PNG reading/writing and color conversion for the graphics tools |

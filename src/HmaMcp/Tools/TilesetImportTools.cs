@@ -49,9 +49,9 @@ public static class TilesetImportTools {
       // each part can come from its own file; images are loaded once (downscaled, with their transparency mask)
       var images = new Dictionary<string, (Png.Image image, bool[] clear)>(StringComparer.OrdinalIgnoreCase);
       (Png.Image image, bool[] clear) Load(string? partFile) {
-         var path = Path.GetFullPath(string.IsNullOrWhiteSpace(partFile) ? file ?? "" : partFile);
+         var path = Paths.Resolve(string.IsNullOrWhiteSpace(partFile) ? file ?? "" : partFile);
          if (images.TryGetValue(path, out var loaded)) return loaded;
-         if (!File.Exists(path)) throw new McpException($"File not found: {path}");
+         if (!File.Exists(path)) throw new McpException($"File not found: {Paths.Show(path)}");
          var img = Png.Decode(File.ReadAllBytes(path));
          if (downscale == 2) img = Halve(img);
          var mask = img.Transparent ?? new bool[img.Width * img.Height];

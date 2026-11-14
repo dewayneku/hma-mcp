@@ -102,6 +102,28 @@ claude mcp add --scope user hma -- "C:/Users/you/AppData/Local/hma-mcp/hma-mcp.e
 }
 ```
 
+<details>
+<summary><b>ChatGPT and other clients that connect by URL</b></summary>
+
+Some clients, like ChatGPT (Developer Mode), only connect to MCP servers on the internet over HTTPS. hma-mcp has an HTTP mode for them, plus a tunnel so the client can reach your PC:
+
+```bash
+hma-mcp --http --rom-dir "C:/hacks"
+```
+
+```bash
+cloudflared tunnel --url http://127.0.0.1:3333
+```
+
+The server prints a URL with a secret token, like `http://127.0.0.1:3333/mcp/3f9c...`. Give your client the same path on the tunnel's address: `https://<random>.trycloudflare.com/mcp/3f9c...`. (ngrok and other tunnels work too.)
+
+- **The token is the password.** Requests without it get a 404. A new one is made each run; pass `--token <at least 16 characters>` or set `HMA_MCP_TOKEN` to keep one. Clients that send headers can use `Authorization: Bearer <token>` on `/mcp` instead.
+- **`--rom-dir` is the only folder it can touch.** ROMs, PNGs and saves must be inside it, and paths are shown relative to it.
+- **It listens on 127.0.0.1 only.** The tunnel is the only way in, and it lasts only while it's running. Stop it when you're done.
+
+All tools work the same over HTTP. Clients that don't display images still get the text part of image tools. Tested with the included HTTP test client; ChatGPT's own setup steps change often, so check OpenAI's help center.
+</details>
+
 Then just ask, for example:
 
 - *"Open my ROM and list every table with 'items' in its name."*
@@ -170,6 +192,7 @@ python tests/smoke.py <path-to-hma-mcp> [path/to/firered.gba]
 
 - **With a ROM:** copies it to a temp folder and edits only the copy. Checks reads, writes, enum validation, undo/redo, a script that has to move to free space, `hma_edit`, and a save → reopen round trip (written against FireRed (U) 1.0). `tests/smoke_emerald.py` runs a shorter version on Emerald (U).
 - **Without a ROM:** checks the MCP handshake and tool list, and opens a blank ROM so HMA loads all of its reference data. [CI](.github/workflows/ci.yml) runs this on Windows, Linux and macOS.
+- **HTTP mode:** `python tests/smoke_http.py <path-to-hma-mcp> [firered.gba]` checks the token gate, the ROM folder limit and the tools over HTTP.
 
 ## Legal
 

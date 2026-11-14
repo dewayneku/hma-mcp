@@ -19,10 +19,10 @@ public static class RomTools {
    public static string RomInfo(RomSessions sessions) => sessions.With(s => Json.Of(Info(s)));
 
    static object Info(RomSession s) => new {
-      path = s.Path,
+      path = Paths.Show(s.Path),
       game_code = s.Model.GetGameCode(),
       size = $"0x{s.Model.Count:X}",
-      metadata_file = RomSessions.MetadataPath(s.Path),
+      metadata_file = Paths.Show(RomSessions.MetadataPath(s.Path)),
       metadata_found = File.Exists(RomSessions.MetadataPath(s.Path)),
       anchors = s.Model.Anchors.Count,
       tables = s.Model.Arrays.Count,
@@ -34,7 +34,8 @@ public static class RomTools {
    [McpServerTool(Name = "save", Destructive = true), Description("Write the ROM and its HMA .toml metadata to disk. The first save of a session copies the original ROM to a timestamped backup in a .hma-mcp-backups folder beside it.")]
    public static string Save(RomSessions sessions,
       [Description("Optional new path (save as). Defaults to the opened file.")] string? path = null) => sessions.With(s => {
-      var target = string.IsNullOrWhiteSpace(path) ? s.Path : System.IO.Path.GetFullPath(path);
+      var target = string.IsNullOrWhiteSpace(path) ? s.Path : Paths.Resolve(path);
+      if (!target.EndsWith(".gba", StringComparison.OrdinalIgnoreCase)) throw new McpException("Save as a .gba file.");
       string? backup = null;
       if (File.Exists(target) && !s.BackupMade) {
          var dir = System.IO.Path.Combine(System.IO.Path.GetDirectoryName(target)!, ".hma-mcp-backups");
@@ -55,7 +56,7 @@ public static class RomTools {
       if (lines != null) File.WriteAllLines(RomSessions.MetadataPath(target), lines);
       s.History.TagAsSaved();
       s.Model.ResetChanges();
-      return Json.Of(new { saved = target, metadata = lines != null ? RomSessions.MetadataPath(target) : null, backup });
+      return Json.Of(new { saved = Paths.Show(target), metadata = lines != null ? Paths.Show(RomSessions.MetadataPath(target)) : null, backup = backup != null ? Paths.Show(backup) : null });
    });
 
    [McpServerTool(Name = "undo"), Description("Undo the last edit (each edit tool call is one step).")]

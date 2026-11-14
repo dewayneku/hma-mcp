@@ -34,3 +34,4 @@ jobs:
           exe=out/hma-mcp
           [ -f out/hma-mcp.exe ] && exe=out/hma-mcp.exe
           python3 tests/smoke.py "$exe"
+          (cd tests && python3 smoke_http.py "../$exe")

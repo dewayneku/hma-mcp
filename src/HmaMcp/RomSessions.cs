@@ -153,8 +153,8 @@ public sealed class RomSessions {
          if (current != null && !current.History.IsSaved && !discardUnsaved)
             throw new McpException($"'{current.Path}' has unsaved changes. Call save first, or open_rom again with discard_unsaved=true.");
 
-         path = System.IO.Path.GetFullPath(path);
-         if (!File.Exists(path)) throw new McpException($"File not found: {path}");
+         path = Paths.Resolve(path);
+         if (!File.Exists(path)) throw new McpException($"File not found: {Paths.Show(path)}");
 
          singletons ??= new Singletons();
          var data = File.ReadAllBytes(path);
