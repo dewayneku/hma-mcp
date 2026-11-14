@@ -76,6 +76,9 @@ public static class MapTools {
             items = Enumerable.Range(0, list.ElementCount).Select(i => {
                var row = Row(s, list, i, skipPointers: false);
                row["to"] = Destination(maps, row, "mapGroup", "mapNum");
+               // connection lists HMA creates for new maps store direction as a plain number; show the name either way
+               if (row.TryGetValue("direction", out var d) && d is int or long && Enum.IsDefined(typeof(HavenSoft.HexManiac.Core.ViewModels.Map.MapDirection), Convert.ToInt32(d)))
+                  row["direction"] = ((HavenSoft.HexManiac.Core.ViewModels.Map.MapDirection)Convert.ToInt32(d)).ToString();
                return row;
             }).ToList(),
          };

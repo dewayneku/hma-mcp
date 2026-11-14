@@ -27,7 +27,8 @@ expected = {"open_rom", "rom_info", "save", "undo", "redo", "close_rom", "list_a
             "find_free_space", "hma_edit", "decompile_script", "compile_script",
             "find_map", "map_events", "read_text", "write_text",
             "view_image", "read_palette", "write_palette", "import_image", "render_map",
-            "add_map_event", "remove_map_event", "read_map_blocks", "paint_map_blocks", "view_blockset", "resize_map"}
+            "add_map_event", "remove_map_event", "read_map_blocks", "paint_map_blocks", "view_blockset", "resize_map",
+            "create_map", "connect_maps", "disconnect_maps"}
 assert expected <= set(names), f"missing tools: {expected - set(names)}"
 c.call("rom_info", expect_error=True)
 
@@ -323,6 +324,35 @@ c.call("undo")
 assert c.call("map_events", map="3.0")["layout"]["width"] == 24
 c.call("resize_map", expect_error=True, map="3.0", right=200, bottom=200)
 
+# --- new maps and connections (kept, so the save round trip below checks them)
+maps_before = c.call("find_map", name="", limit=1000)["total"]
+n = c.call("create_map", like="3.19", width=20, height=20, name="ROUTE 22")
+assert n["name"] == "ROUTE 22" and n["size"] == "20x20" and n["fill"] == "block 00D, movement 0C", n
+new_map = c.call("map_events", map=n["id"])
+assert new_map["settings"]["music"] == "mus_route1" and not new_map["events"]["objects"]["items"], new_map
+assert c.call("find_map", name="", limit=1000)["total"] == maps_before + 1
+c.call("connect_maps", map="3.0", direction="east", to_map=n["id"])
+pallet_links = {x["to"]: x["direction"] for x in c.call("map_events", map="3.0")["connections"]["items"]}
+assert pallet_links[f"{n['id']} ROUTE 22"] == "Right", pallet_links
+assert [(x["to"], x["direction"]) for x in c.call("map_events", map=n["id"])["connections"]["items"]] == [("3.0 PALLET TOWN", "Left")]
+c.call("connect_maps", expect_error=True, map="3.0", direction="east", to_map=n["id"])  # already connected
+c.call("connect_maps", expect_error=True, map="3.0", direction="sideways", to_map=n["id"])
+c.call("add_map_event", map=n["id"], kind="warp", x=5, y=5, fields={"bank": "4", "map": "1", "warpID": "0"})
+r, png = c.call_image("render_map", map=n["id"])
+assert png_util.size(png) == (320, 320)
+# disconnect removes both sides; undo brings them back
+c.call("disconnect_maps", map=n["id"], direction="west")
+assert len(c.call("map_events", map="3.0")["connections"]["items"]) == 2
+c.call("disconnect_maps", expect_error=True, map="3.0", direction="west")
+c.call("undo")
+assert len(c.call("map_events", map="3.0")["connections"]["items"]) == 3
+# a map in a new bank, then undone
+banks = c.call("read_table", table="data.maps.banks", start=0, count=1)["element_count"]
+n2 = c.call("create_map", like="4.1", width=8, height=8, bank="new")
+assert n2["id"] == f"{banks}.0", n2
+c.call("undo")
+assert c.call("read_table", table="data.maps.banks", start=0, count=1)["element_count"] == banks
+
 # --- save round-trip: reopen and check every edit stuck, and the metadata kept our anchor
 saved = c.call("save")
 assert saved["backup"] and os.path.exists(saved["backup"]), saved
@@ -332,6 +362,9 @@ assert c.call("read_table", table="data.pokemon.stats", start=1, count=1, fields
 assert c.call("read_table", table="data.pokemon.stats", start=4, count=1, fields="type2")["rows"][0]["type2"] == "DRAGON"
 assert c.call("read_table", table="data.pokemon.names", start=4, count=1)["rows"][0]["name"] == "CHARMY"
 assert c.call("resolve", target="test.hello")["run"]["kind"] == "text"
+assert c.call("map_events", map=n["id"])["name"] == "ROUTE 22"  # the new map, its warp and its connection survive the reopen
+assert len(c.call("map_events", map=n["id"])["events"]["warps"]["items"]) == 1
+assert any(x["to"].startswith(n["id"]) for x in c.call("map_events", map="3.0")["connections"]["items"])
 # the backup must still be the untouched original
 with open(source_rom, "rb") as a, open(saved["backup"], "rb") as b:
     assert a.read() == b.read(), "backup differs from the original ROM"

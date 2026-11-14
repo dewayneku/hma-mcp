@@ -110,6 +110,7 @@ Then just ask, for example:
 - *"Show me Charmander's shiny sprite, then make its flame blue."*
 - *"Draw Pallet Town with its NPCs."*
 - *"Copy one of Pallet Town's houses into the empty space at the bottom, then widen Route 1 by two blocks."*
+- *"Make a new route east of Pallet Town that looks like Route 1."*
 - *"Find 512 bytes of free space."*
 
 ## Tools
@@ -127,6 +128,7 @@ Then just ask, for example:
 | 🏞️ | `render_map` | A picture of a map, with NPCs and event markers |
 | 🧱 | `read_map_blocks` · `paint_map_blocks` · `view_blockset` | A map's blocks and movement permissions as hex grids; paint blocks (copy a building from one spot to another); see the tiles a map can use |
 | 🚪 | `add_map_event` · `remove_map_event` · `resize_map` | Add or remove NPCs, warps, triggers and signs; grow or shrink a map (events and connections stay in place) |
+| 🆕 | `create_map` · `connect_maps` · `disconnect_maps` | New maps modeled on an existing one (its tilesets, music, weather); join or separate neighboring maps, both sides at once |
 | 💬 | `read_text` · `write_text` | Game text at an address (a script's message, say); longer text is moved and every pointer to it updated |
 | 📜 | `decompile_script` · `compile_script` | Event, battle, animation and trainer-AI scripts, with automatic repointing |
 | ⌨️ | `hma_edit` | Type into HMA's hex view using its full edit language (`^anchor`, `<pointer>`, `"text"`) |
@@ -142,7 +144,7 @@ HMA supports FireRed, LeafGreen, Emerald, Ruby and Sapphire, and hacks of them. 
 
 ```mermaid
 flowchart LR
-    A["Claude / any MCP client"] <-- "MCP over stdio" --> B["hma-mcp<br/>(32 tools)"]
+    A["Claude / any MCP client"] <-- "MCP over stdio" --> B["hma-mcp<br/>(35 tools)"]
     B --> C["HexManiac.Core<br/>(HMA's engine, built from source)"]
     C <--> D[("your ROM .gba<br/>+ HMA .toml metadata")]
 ```

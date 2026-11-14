@@ -21,6 +21,7 @@ Tested so far: FireRed (U) 1.0 (BPRE0), 2026-11-10, with these tasks:
 | Graphics | View Charmander's front/back/shiny sprites, an overworld sprite's frames, a Pokémon icon, the title-screen tilemap; export to PNG, flip and re-import (indexed and truecolor, smart/cautious), edit a palette, undo each | ✅ new `view_image`, `import_image`, `read_palette`, `write_palette` (2026-11-14; Emerald too) |
 | Map pictures | Draw Pallet Town and Route 1 (FireRed), Littleroot Town (Emerald), with and without NPCs and event markers | ✅ new `render_map` |
 | Map editing | Add an NPC, sign and warp to Pallet Town and remove them; add the first NPC to a map with none; copy a house's blocks to another spot; resize Pallet Town on each side (NPCs stay in place); the same in Littleroot Town; undo each | ✅ new `add_map_event`, `remove_map_event`, `read_map_blocks`, `paint_map_blocks`, `view_blockset`, `resize_map` (2026-11-14) |
+| New maps, connections | Create a route like Route 1 (named ROUTE 22), connect it east of Pallet Town, add a warp, save and reopen; disconnect and undo; a map in a new bank; the same with Littleroot Town in Emerald | ✅ new `create_map`, `connect_maps`, `disconnect_maps` |
 | Round trip | save, reopen, re-read every edit, check `.toml` | ✅ moved anchors and free-space start are kept |
 
 Emerald (U) (BPEE0), 2026-11-10, with `tests/smoke_emerald.py`: Treecko's type and a rejected out-of-range speed, Potion price, a trainer team, Route 101 wild data by `where`, Littleroot Town by name and its events, an unchanged NPC script recompiled byte-identical, the town sign grown and moved (pointer updated) then undone, save → reopen. All ✅ with no Emerald-specific fixes needed. Note that species rows 252–276 are the unused `?` slots, so Treecko is row 277.
@@ -30,7 +31,9 @@ Emerald (U) (BPEE0), 2026-11-10, with `tests/smoke_emerald.py`: Treecko's type a
 ### Maps: what's not covered yet
 - **Overworld sprites show as numbers** (`graphics: "23"`), because HMA's sprite list has no names. `view_image` on `graphics.overworld.sprites` with that row shows which one it is.
 - **Indoor maps share their town's name**, so `PALLET TOWN` matches 5 maps; tools then ask for an id (`3.0` is the town itself).
-- **No new maps, map connections or tileset (block) editing yet.** Connections can be changed with `write_table_field` on the list `map_events` gives; adding one, creating a map, or editing what a block looks like isn't covered.
+- **Block and tileset editing isn't covered.** You can place any existing block, but not change what a block looks like or its behavior (grass, water, door).
+- **New maps aren't in the Town Map or fly list.** `create_map` gives the map a region name, but placing it on the Town Map or adding a fly spot isn't covered.
+- **Connections aren't checked for overlaps.** `connect_maps` takes the offset you give (centered by default); look at both maps with `render_map`.
 - **Removing events shifts the later ones down.** Warps on other maps that lead here by warp number, and scripts that refer to NPCs by local id, aren't updated. `remove_map_event` warns about this.
 - **A new event's script must already exist.** Write it first (e.g. `compile_script` or `hma_edit` into free space) and pass its address as `script`/`arg`.
 

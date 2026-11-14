@@ -88,6 +88,14 @@ try:
     assert c.call("resize_map", map="0.9", right=2)["after"] == "22x20"
     c.call("undo")
 
+    # --- a new map connected to Littleroot, then undone
+    n = c.call("create_map", like="0.16", width=16, height=16)
+    c.call("connect_maps", map="0.9", direction="west", to_map=n["id"])
+    assert [x["direction"] for x in c.call("map_events", map=n["id"])["connections"]["items"]] == ["Right"]
+    c.call("undo")
+    c.call("undo")
+    assert not any(x["to"].startswith(n["id"]) for x in (c.call("map_events", map="0.9")["connections"] or {"items": []})["items"])
+
     # --- save -> reopen keeps the edit
     c.call("save")
     c.call("close_rom")

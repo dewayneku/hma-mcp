@@ -289,6 +289,179 @@ public static class MapEditTools {
       return Json.Of(new { map = $"{m.Id} {m.Name}", before = $"{oldWidth}x{oldHeight}", after = $"{width}x{height}" });
    });
 
+   // ---------- new maps and connections ----------
+
+   static readonly MethodInfo CreateNewMapMethod = Private("CreateNewMap", typeof(ModelDelta), typeof(int), typeof(int), typeof(int));
+   static readonly MethodInfo AddConnectionMethod = Private("AddConnection", typeof(ConnectionInfo));
+   static readonly MethodInfo RemoveConnectionsMethod = Private("RemoveConnections", typeof(IReadOnlyList<int>));
+
+   static MethodInfo Private(string name, params Type[] args) =>
+      typeof(BlockMapViewModel).GetMethod(name, BindingFlags.NonPublic | BindingFlags.Instance, null, args, null)
+      ?? throw new InvalidOperationException($"HMA's BlockMapViewModel no longer has {name}; update MapEditTools.");
+
+   static object? Call(MethodInfo method, object target, params object[] args) {
+      try {
+         return method.Invoke(target, args);
+      } catch (TargetInvocationException ex) when (ex.InnerException != null) {
+         throw new McpException($"HMA failed in {method.Name}: {ex.InnerException.Message}");
+      }
+   }
+
+   [McpServerTool(Name = "create_map", Destructive = true), Description(
+      "Create a new map, as HMA's map editor does: it copies the header (music, weather, map type, name) and the tilesets/border of an existing " +
+      "map you pick as a template, and starts with no events and no connections. The block area is filled with one block (default: the template's " +
+      "most-used block and movement). Then: paint_map_blocks to draw it, add_map_event for a warp in and out, connect_maps to join it to a neighbor. " +
+      "Returns the new map's id. One undo step.")]
+   public static string CreateMap(RomSessions sessions,
+      [Description("Template map id 'bank.map' or unique name (e.g. a route for an outdoor map, a house for an indoor one)")] string like,
+      [Description("Width in blocks")] int width,
+      [Description("Height in blocks")] int height,
+      [Description("Map bank to add it to (number), or 'new' for a new bank. Banks are only for organization; default: the template's bank")] string bank = "",
+      [Description("Block to fill with, hex (default: the template's most-used block)")] string fill_block = "",
+      [Description("Movement permission for the fill, hex (default: what the template uses with that block)")] string fill_movement = "",
+      [Description("Map name from the region names (regionSectionID / data.maps.names), e.g. 'ROUTE 1'; default: the template's")] string name = "") => sessions.Edit(s => {
+      var template = FindOne(s, like);
+      if (width < 1 || height < 1 || !BlockMapViewModel.IsMapWithinSizeLimit(width, height))
+         throw new McpException($"{width}x{height} isn't a valid map size ((width+15)*(height+14) must be at most 10240).");
+      int bankCount = TableAt(s, s.Model.GetTable(HardcodeTablesModel.MapBankTable).Start)!.ElementCount;
+      int bankIndex = string.IsNullOrWhiteSpace(bank) ? template.Bank
+         : bank.Trim().Equals("new", StringComparison.OrdinalIgnoreCase) ? bankCount
+         : int.TryParse(bank, out var b) && b >= 0 && b <= bankCount ? b
+         : throw new McpException($"bank must be 0 to {bankCount - 1}, or 'new'.");
+
+      // the fill value: a block plus its movement bits, by default the template's most common cell
+      var (tw, th, tmap) = Blockmap(s, template);
+      var cells = Enumerable.Range(0, tw * th).Select(i => s.Model.ReadMultiByteValue(tmap + i * 2, 2)).ToList();
+      int fillBlock = string.IsNullOrWhiteSpace(fill_block) ? cells.GroupBy(v => v & 0x3FF).OrderByDescending(g => g.Count()).First().Key : ParseHex(fill_block, "block", 0x3FF);
+      int fillMove = string.IsNullOrWhiteSpace(fill_movement)
+         ? cells.Where(v => (v & 0x3FF) == fillBlock).Select(v => v >> 10).GroupBy(v => v).OrderByDescending(g => g.Count()).Select(g => g.Key).DefaultIfEmpty(0).First()
+         : ParseHex(fill_movement, "movement", 0x3F);
+
+      var view = GraphicsTools.MapView(s, template.Bank, template.Map);
+      if (fillBlock >= view.BlockRenders.Count) throw new McpException($"Block {fillBlock:X3} isn't in the template's tilesets (000-{view.BlockRenders.Count - 1:X3}).");
+      var created = Call(CreateNewMapMethod, view, s.Token, bankIndex, width, height) as BlockMapViewModel
+         ?? throw new McpException(s.Model.GetTable(HardcodeTablesModel.MapLayoutTable) == null
+            ? "This ROM has no map layout table, so HMA can't add maps."
+            : $"Bank {bankIndex} is full (127 maps). Use another bank or 'new'.");
+      // its own copy of the border blocks, so editing them later doesn't change the template
+      if (created.MapRepointer.RepointBorderBlock.CanExecute(null)) created.MapRepointer.RepointBorderBlock.Execute(null);
+
+      var m = FindOne(s, $"{created.MapID / 1000}.{created.MapID % 1000}");
+      var (_, _, blockmap) = Blockmap(s, m);
+      for (int i = 0; i < width * height; i++) s.Model.WriteMultiByteValue(blockmap + i * 2, 2, s.Token, (fillMove << 10) | fillBlock);
+      if (!string.IsNullOrWhiteSpace(name)) {
+         var header = TableAt(s, m.Header)!;
+         var f = Fields(header).FirstOrDefault(x => x.Key == "regionSectionID") ?? throw new McpException("This ROM's map header has no regionSectionID field.");
+         WriteField(s, header, 0, f, name);
+      }
+      s.ViewPort.Refresh();
+      m = FindOne(s, m.Id);
+      return Json.Of(new {
+         id = m.Id,
+         name = m.Name,
+         header = m.Header.ToAddress(),
+         size = $"{width}x{height}",
+         like = $"{template.Id} {template.Name}",
+         fill = $"block {fillBlock:X3}, movement {fillMove:X2}",
+         next = "paint_map_blocks to draw it, add_map_event for warps, connect_maps for neighbors; check with render_map.",
+      });
+   });
+
+   static readonly Dictionary<string, MapDirection> Directions = new(StringComparer.OrdinalIgnoreCase) {
+      ["up"] = MapDirection.Up, ["north"] = MapDirection.Up,
+      ["down"] = MapDirection.Down, ["south"] = MapDirection.Down,
+      ["left"] = MapDirection.Left, ["west"] = MapDirection.Left,
+      ["right"] = MapDirection.Right, ["east"] = MapDirection.Right,
+      ["dive"] = MapDirection.Dive, ["emerge"] = MapDirection.Emerge,
+   };
+
+   static MapDirection Direction(string text) => Directions.TryGetValue((text ?? "").Trim(), out var d) ? d
+      : throw new McpException($"direction must be up, down, left, right (or north/south/west/east), dive or emerge, not '{text}'.");
+
+   [McpServerTool(Name = "connect_maps", Destructive = true), Description(
+      "Connect two maps so the player walks from one into the other (or dives/emerges), adding the matching connection on both maps, as HMA's map editor does. " +
+      "direction is where to_map lies as seen from map: 'up' means to_map is north of map. offset is in blocks: for up/down, how far to_map is shifted right " +
+      "relative to map's left edge (negative = left); for left/right, how far it is shifted down relative to map's top edge. Default: centered. " +
+      "Check with render_map on both. One undo step.")]
+   public static string ConnectMaps(RomSessions sessions,
+      [Description("Map id 'bank.map' or unique name")] string map,
+      [Description("'up', 'down', 'left', 'right' (or north/south/west/east), 'dive' or 'emerge'")] string direction,
+      [Description("The neighboring map, id or unique name")] string to_map,
+      [Description("Offset in blocks; omit to center")] int? offset = null) => sessions.Edit(s => {
+      var a = FindOne(s, map);
+      var bMap = FindOne(s, to_map);
+      if (a.Bank == bMap.Bank && a.Map == bMap.Map) throw new McpException("A map can't connect to itself.");
+      var dir = Direction(direction);
+      var (aw, ah) = MapSize(s, a);
+      var (bw, bh) = MapSize(s, bMap);
+      bool vertical = dir is MapDirection.Up or MapDirection.Down;
+      bool z = dir is MapDirection.Dive or MapDirection.Emerge;
+      int off = z ? 0 : offset ?? (vertical ? (aw - bw) / 2 : (ah - bh) / 2);
+
+      var existing = Connections(s, a);
+      if (existing.Any(c => c.mapGroup == bMap.Bank && c.mapNum == bMap.Map && c.direction == dir))
+         throw new McpException($"{a.Id} is already connected to {bMap.Id} going {dir.ToString().ToLowerInvariant()}.");
+
+      var viewA = GraphicsTools.MapView(s, a.Bank, a.Map);
+      var viewB = GraphicsTools.MapView(s, bMap.Bank, bMap.Map);
+      var there = Call(AddConnectionMethod, viewA, new ConnectionInfo(0, off, dir)) as ConnectionModel
+         ?? throw new McpException($"HMA couldn't add a connection to {a.Id}.");
+      there.Offset = off;
+      there.Direction = dir;
+      there.MapGroup = bMap.Bank;
+      there.MapNum = bMap.Map;
+      there.Unused = 0;
+      var back = Call(AddConnectionMethod, viewB, new ConnectionInfo(0, -off, dir.Reverse())) as ConnectionModel
+         ?? throw new McpException($"HMA couldn't add a connection to {bMap.Id}.");
+      back.Offset = z ? 0 : -off;
+      back.Direction = dir.Reverse();
+      back.MapGroup = a.Bank;
+      back.MapNum = a.Map;
+      back.Unused = 0;
+      s.ViewPort.Refresh();
+      return Json.Of(new {
+         map = $"{a.Id} {a.Name}",
+         to = $"{bMap.Id} {bMap.Name}",
+         direction = dir.ToString().ToLowerInvariant(),
+         offset = off,
+         reverse = $"{bMap.Id} -> {a.Id} going {dir.Reverse().ToString().ToLowerInvariant()}, offset {(z ? 0 : -off)}",
+      });
+   });
+
+   [McpServerTool(Name = "disconnect_maps", Destructive = true), Description(
+      "Remove a map's connection(s) in one direction, and the matching connection on the other map, as HMA's map editor does. " +
+      "Pass to_map to remove only the connection to that map when several share a side. One undo step.")]
+   public static string DisconnectMaps(RomSessions sessions,
+      [Description("Map id 'bank.map' or unique name")] string map,
+      [Description("'up', 'down', 'left', 'right' (or north/south/west/east), 'dive' or 'emerge'")] string direction,
+      [Description("Only the connection to this map (id or unique name)")] string to_map = "") => sessions.Edit(s => {
+      var a = FindOne(s, map);
+      var dir = Direction(direction);
+      MapRef? other = string.IsNullOrWhiteSpace(to_map) ? null : FindOne(s, to_map);
+      var list = Connections(s, a);
+      var indices = list.Select((c, i) => (c, i))
+         .Where(x => x.c.direction == dir && (other == null || (x.c.mapGroup == other.Bank && x.c.mapNum == other.Map)))
+         .Select(x => x.i).ToList();
+      if (indices.Count == 0) throw new McpException($"{a.Id} has no connection going {dir.ToString().ToLowerInvariant()}{(other != null ? $" to {other.Id}" : "")}.");
+      var removed = indices.Select(i => $"{list[i].mapGroup}.{list[i].mapNum}").ToList();
+      var view = GraphicsTools.MapView(s, a.Bank, a.Map);
+      Call(RemoveConnectionsMethod, view, (IReadOnlyList<int>)indices);
+      s.ViewPort.Refresh();
+      return Json.Of(new { map = $"{a.Id} {a.Name}", direction = dir.ToString().ToLowerInvariant(), removed, remaining = Connections(s, a).Count });
+   });
+
+   static List<(MapDirection direction, int offset, int mapGroup, int mapNum)> Connections(RomSession s, MapRef m) {
+      var header = TableAt(s, m.Header);
+      var con = header == null ? null : Sub(s, header, 0, "connections");
+      var list = con == null ? null : Sub(s, con, 0, "connections");
+      if (list == null) return new();
+      return Enumerable.Range(0, list.ElementCount).Select(i => (
+         (MapDirection)s.Model.ReadMultiByteValue(list.Start + i * list.ElementLength, 4),
+         s.Model.ReadMultiByteValue(list.Start + i * list.ElementLength + 4, 4),
+         (int)s.Model[list.Start + i * list.ElementLength + 8],
+         (int)s.Model[list.Start + i * list.ElementLength + 9])).ToList();
+   }
+
    // ---------- helpers ----------
 
    static ITableRun? EventList(RomSession s, MapRef m, EventKind k) {
