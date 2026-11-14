@@ -96,6 +96,14 @@ try:
     c.call("undo")
     assert not any(x["to"].startswith(n["id"]) for x in (c.call("map_events", map="0.9")["connections"] or {"items": []})["items"])
 
+    # --- blocks on Emerald: tall grass, a behavior change undone, tiles
+    grass = c.call("read_block", map="0.16", block="00D")
+    assert grass["behavior"] == "02 Tall_Grass" and "terrain" not in grass, grass  # Emerald's 2-byte attributes
+    c.call("write_block", map="0.16", block="00D", layer="covered")
+    c.call("undo")
+    assert c.call("read_block", map="0.16", block="00D")["layer"] == "normal"
+    assert c.call("view_tiles", map="0.16", tileset="secondary", count=16)["tiles"].startswith("200-")
+
     # --- save -> reopen keeps the edit
     c.call("save")
     c.call("close_rom")

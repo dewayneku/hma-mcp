@@ -29,7 +29,8 @@ expected = {"open_rom", "rom_info", "save", "undo", "redo", "close_rom", "list_a
             "view_image", "read_palette", "write_palette", "import_image", "render_map",
             "add_map_event", "remove_map_event", "read_map_blocks", "paint_map_blocks", "view_blockset", "resize_map",
             "create_map", "connect_maps", "disconnect_maps",
-            "add_fly_spot", "read_town_map", "paint_town_map", "view_overworld_sprites"}
+            "add_fly_spot", "read_town_map", "paint_town_map", "view_overworld_sprites",
+            "read_block", "write_block", "list_block_behaviors", "view_tiles"}
 assert expected <= set(names), f"missing tools: {expected - set(names)}"
 c.call("rom_info", expect_error=True)
 
@@ -401,6 +402,22 @@ assert c.call("read_town_map")["regions"][0] == "kanto"
 c.call("paint_town_map", region="kanto", x=1, y=8, name="ROUTE 22")
 assert c.call("read_town_map", region="kanto")["rows"][8].split()[1] == "034"
 c.call("paint_town_map", expect_error=True, region="kanto", x=21, y=8, width=2, name="ROUTE 22")
+
+# --- blocks: what they're made of and how they behave
+grass, png = c.call_image("read_block", map="3.19", block="00D")
+assert grass["behavior"] == "02 Tall_Grass" and grass["layer"] == "normal" and grass["tileset"] == "primary", grass
+assert grass["bottom"] == ["044 0 -", "045 0 -", "054 0 -", "055 0 -"] and png_util.size(png) == (128, 128), grass
+assert "02 Tall_Grass" in c.call("list_block_behaviors", filter="grass")["behaviors"]
+w, _ = c.call_image("write_block", map="3.19", block="0D4", behavior="MB_TALL_GRASS", layer="covered", bottom=[".", ".", ".", "044 0 h"])
+assert w["behavior"] == "02 Tall_Grass" and w["layer"] == "covered" and w["bottom"][3] == "044 0 h" and "primary-tileset" in w["note"], w
+c.call("write_block", expect_error=True, map="3.19", block="0D4", behavior="grasss")
+c.call("write_block", expect_error=True, map="3.19", block="0D4", bottom=["044 0"])
+c.call("write_block", expect_error=True, map="3.19", block="0D4", top=["044 13", ".", ".", "."])  # palette out of range
+c.call("read_block", expect_error=True, map="3.19", block="FFF")
+c.call("undo")
+assert c.call_image("read_block", map="3.19", block="0D4")[0]["behavior"] == "00 Normal"
+t, png = c.call_image("view_tiles", map="3.0", tileset="secondary", count=32)
+assert t["tiles"].startswith("280-") and t["shown"] == "280-29F", t
 
 # --- save round-trip: reopen and check every edit stuck, and the metadata kept our anchor
 saved = c.call("save")

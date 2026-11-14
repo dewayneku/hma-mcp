@@ -29,7 +29,7 @@ Emerald (U) (BPEE0), 2026-11-10, with `tests/smoke_emerald.py`: Treecko's type a
 ## Open
 
 ### Maps: what's not covered yet
-- **Block and tileset editing isn't covered yet** (in progress): you can place any existing block, but not change what a block looks like or its behavior.
+- **Custom tilesets from images aren't covered yet** (in progress). Existing blocks can be changed with `write_block` (tiles, behavior, layer); a primary-tileset block changes on every map that uses that tileset.
 - **Indoor maps share their town's name**, as in the game's data; `find_map` shows each map's `type` (town, route, indoor, ...) to tell them apart.
 - **New region names can't be added.** The region name list (`data.maps.names`) has a fixed size that the game's code relies on. A new map can use an existing name; for its own Fly spot and Town Map squares, use a name no other Fly spot uses.
 - **Fly needs the visit flag.** `add_fly_spot` adds the destination; in the game it appears in the Fly menu after the player has been there.

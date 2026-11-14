@@ -113,7 +113,8 @@ public sealed class RomSessions {
       one with write_table_field on the list map_events gives); read_map_blocks + view_blockset to find
       block ids, paint_map_blocks to place them; resize_map. New maps: create_map (modeled on an existing
       map), then connect_maps / disconnect_maps, warps, add_fly_spot and paint_town_map. NPC looks:
-      view_overworld_sprites. Render the map before and after.
+      view_overworld_sprites. Blocks: read_block / write_block (tiles, behavior, layer), view_tiles.
+      Render the map before and after.
       Nothing touches the file on disk until save is called; save makes a timestamped backup of the
       original ROM the first time and writes HMA's .toml metadata next to the ROM, so the HMA GUI
       sees the same anchors. Every edit tool is one undo step (undo / redo).

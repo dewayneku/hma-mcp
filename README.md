@@ -131,6 +131,7 @@ Then just ask, for example:
 | 🆕 | `create_map` · `connect_maps` · `disconnect_maps` | New maps modeled on an existing one (its tilesets, music, weather); join or separate neighboring maps, both sides at once |
 | 🕊️ | `add_fly_spot` · `read_town_map` · `paint_town_map` | Make a map a Fly destination; put it on the Town Map |
 | 🧍 | `view_overworld_sprites` | A labeled sheet of NPC sprites, to pick one by number |
+| 🧩 | `read_block` · `write_block` · `list_block_behaviors` · `view_tiles` | What a block is made of (8 tiles, 2 layers) and how it behaves (grass, water, door, ...); change either |
 | 💬 | `read_text` · `write_text` | Game text at an address (a script's message, say); longer text is moved and every pointer to it updated |
 | 📜 | `decompile_script` · `compile_script` | Event, battle, animation and trainer-AI scripts, with automatic repointing |
 | ⌨️ | `hma_edit` | Type into HMA's hex view using its full edit language (`^anchor`, `<pointer>`, `"text"`) |
@@ -146,7 +147,7 @@ HMA supports FireRed, LeafGreen, Emerald, Ruby and Sapphire, and hacks of them. 
 
 ```mermaid
 flowchart LR
-    A["Claude / any MCP client"] <-- "MCP over stdio" --> B["hma-mcp<br/>(39 tools)"]
+    A["Claude / any MCP client"] <-- "MCP over stdio" --> B["hma-mcp<br/>(43 tools)"]
     B --> C["HexManiac.Core<br/>(HMA's engine, built from source)"]
     C <--> D[("your ROM .gba<br/>+ HMA .toml metadata")]
 ```
