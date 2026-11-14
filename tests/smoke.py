@@ -26,7 +26,8 @@ expected = {"open_rom", "rom_info", "save", "undo", "redo", "close_rom", "list_a
             "describe_table", "read_table", "write_table_field", "read_bytes", "write_bytes",
             "find_free_space", "hma_edit", "decompile_script", "compile_script",
             "find_map", "map_events", "read_text", "write_text",
-            "view_image", "read_palette", "write_palette", "import_image", "render_map"}
+            "view_image", "read_palette", "write_palette", "import_image", "render_map",
+            "add_map_event", "remove_map_event", "read_map_blocks", "paint_map_blocks", "view_blockset", "resize_map"}
 assert expected <= set(names), f"missing tools: {expected - set(names)}"
 c.call("rom_info", expect_error=True)
 
@@ -278,6 +279,49 @@ assert m["size_blocks"] == "24x20" and png_util.size(png) == (384, 320), m
 m, png = c.call_image("render_map", map="3.0", events="none", scale=2)
 assert png_util.size(png) == (768, 640)
 c.call("render_map", expect_error=True, map="3.0", events="some")
+
+# --- map editing: add/remove events, read/paint blocks, blockset, resize; each is one undo step
+before = c.call("map_events", map="3.0")
+npcs = before["events"]["objects"]["items"]
+a = c.call("add_map_event", map="3.0", kind="npc", x=12, y=14, fields={"graphics": "5", "script": npcs[0]["script"]})
+assert a["index"] == len(npcs) and a["event"]["x"] == 12 and a["event"]["graphics"] == "5", a
+assert a["event"]["elevation"] == "3" and a["event"]["id"] == len(npcs) + 1, a  # elevation copied from the other NPCs; next free id
+s = c.call("add_map_event", map="3.0", kind="sign", x=5, y=5, fields={"arg": before["events"]["signposts"]["items"][0]["arg"]})
+w = c.call("add_map_event", map="3.0", kind="warp", x=1, y=1, fields={"bank": "4", "map": "1", "warpID": "0"})
+assert c.call("map_events", map="3.0")["events"]["warps"]["items"][w["index"]]["to"].startswith("4.1"), w
+c.call("add_map_event", expect_error=True, map="3.0", kind="npc", x=99, y=1)
+c.call("add_map_event", expect_error=True, map="3.0", kind="npc", x=1, y=1, fields={"nope": "1"})
+c.call("add_map_event", expect_error=True, map="3.0", kind="statue", x=1, y=1)
+r = c.call("remove_map_event", map="3.0", kind="npc", index=a["index"])
+assert r["remaining"] == len(npcs) and r["removed"]["x"] == 12, r
+c.call("remove_map_event", expect_error=True, map="3.0", kind="npc", index=99)
+for _ in range(4):
+    c.call("undo")
+after = c.call("map_events", map="3.0")["events"]
+assert [len(after[k]["items"]) for k in ("objects", "warps", "signposts")] == [len(before["events"][k]["items"]) for k in ("objects", "warps", "signposts")]
+# blocks: copy the top-left house onto the bottom of the map, then undo
+house = c.call("read_map_blocks", map="3.0", x=4, y=2, width=6, height=5)
+assert house["blocks"][2].split()[1] == "289" and house["movement"][2].split()[1] == "01", house
+original = c.call("read_map_blocks", map="3.0", x=4, y=13, width=6, height=5)
+p = c.call("paint_map_blocks", map="3.0", x=4, y=13, blocks=house["blocks"], movement=house["movement"])
+assert p["cells_changed"] > 0 and c.call("read_map_blocks", map="3.0", x=4, y=13, width=6, height=5)["blocks"] == house["blocks"]
+c.call("paint_map_blocks", map="3.0", x=4, y=13, blocks=[". 001"], movement=["01"])  # '.' keeps a cell; one movement value for all painted cells
+cell = c.call("read_map_blocks", map="3.0", x=4, y=13, width=2, height=1)
+assert cell["blocks"][0].split() == [house["blocks"][0].split()[0], "001"] and cell["movement"][0].split()[1] == "01", cell
+c.call("undo")
+c.call("undo")
+assert c.call("read_map_blocks", map="3.0", x=4, y=13, width=6, height=5)["blocks"] == original["blocks"]
+c.call("paint_map_blocks", expect_error=True, map="3.0", x=22, y=0, blocks=["001 001 001"])  # off the edge
+c.call("paint_map_blocks", expect_error=True, map="3.0", x=0, y=0, blocks=["3FF"])  # not in the tilesets
+bs, png = c.call_image("view_blockset", map="3.0", count=64)
+assert bs["primary_tileset_blocks"] == "000-27F" and png_util.size(png) == (256, 256), bs
+# resize: growing on the left shifts events right so they stay in place
+r = c.call("resize_map", map="3.0", left=2, bottom=1)
+assert (r["before"], r["after"]) == ("24x20", "26x21"), r
+assert c.call("map_events", map="3.0")["events"]["objects"]["items"][0]["x"] == npcs[0]["x"] + 2
+c.call("undo")
+assert c.call("map_events", map="3.0")["layout"]["width"] == 24
+c.call("resize_map", expect_error=True, map="3.0", right=200, bottom=200)
 
 # --- save round-trip: reopen and check every edit stuck, and the metadata kept our anchor
 saved = c.call("save")

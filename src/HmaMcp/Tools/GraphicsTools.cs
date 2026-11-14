@@ -198,13 +198,9 @@ public static class GraphicsTools {
          _ => throw new McpException($"events must be all, objects or none, not '{events}'."),
       };
       var m = MapTools.FindOne(s, map);
-      var renderer = MapRendererFor(s);
-      var view = new BlockMapViewModel(renderer.FileSystem, null, s.ViewPort, renderer.Format, renderer.Templates, m.Bank, m.Map) {
-         AllOverworldSprites = renderer.Templates.OverworldGraphics,
-         IncludeBorders = borders,
-         SpriteScale = 1,
-         ShowEvents = options,
-      };
+      var view = MapView(s, m.Bank, m.Map);
+      view.IncludeBorders = borders;
+      view.ShowEvents = options;
       var pixels = view.PixelData;
       int width = view.PixelWidth, height = view.PixelHeight;
       if (pixels == null || width == 0 || height == 0) throw new McpException($"HMA couldn't draw map {m.Id}; its layout or tileset may be invalid.");
@@ -231,6 +227,17 @@ public static class GraphicsTools {
       public required StubFileSystem FileSystem { get; init; }
       public required Format Format { get; init; }
       public required EventTemplate Templates { get; init; }
+      public MapTutorialsViewModel Tutorials { get; } = new();
+   }
+
+   /// <summary>HMA's map editor view of one map, headless. Edits through it go into the session's undo history.</summary>
+   internal static BlockMapViewModel MapView(RomSession s, int bank, int map) {
+      var renderer = MapRendererFor(s);
+      return new BlockMapViewModel(renderer.FileSystem, renderer.Tutorials, s.ViewPort, renderer.Format, renderer.Templates, bank, map) {
+         AllOverworldSprites = renderer.Templates.OverworldGraphics,
+         IncludeBorders = false,
+         SpriteScale = 1,
+      };
    }
 
    static readonly ConditionalWeakTable<RomSession, StubFileSystem> FileSystems = new();
@@ -370,7 +377,7 @@ public static class GraphicsTools {
       return Result(info, pixels, cols * cell, rows * cell, scale > 0 ? Math.Clamp(scale, 1, 8) : 3, saveTo);
    }
 
-   static CallToolResult Result(Dictionary<string, object?> info, short[] pixels, int width, int height, int scale, string saveTo, byte[]? fileBytes = null) {
+   internal static CallToolResult Result(Dictionary<string, object?> info, short[] pixels, int width, int height, int scale, string saveTo, byte[]? fileBytes = null) {
       if (!string.IsNullOrWhiteSpace(saveTo)) {
          var path = Path.GetFullPath(saveTo);
          if (!path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) throw new McpException("save_to must be a .png path.");

@@ -138,20 +138,20 @@ public static class MapTools {
    internal static ITableRun? TableAt(RomSession s, int address) =>
       address >= 0 && address < s.Model.Count && s.Model.GetNextRun(address) is ITableRun run && run.Start == address ? run : null;
 
-   static int Pointer(RomSession s, ITableRun run, int index, string field) {
+   internal static int Pointer(RomSession s, ITableRun run, int index, string field) {
       var f = Fields(run).FirstOrDefault(x => x.Key == field);
       if (f == null || f.Seg.Type != ElementContentType.Pointer) return -1;
       var p = s.Model.ReadPointer(run.Start + run.ElementLength * index + f.Offset);
       return p >= 0 && p < s.Model.Count ? p : -1;
    }
 
-   static ITableRun? Sub(RomSession s, ITableRun run, int index, string field) => TableAt(s, Pointer(s, run, index, field));
+   internal static ITableRun? Sub(RomSession s, ITableRun run, int index, string field) => TableAt(s, Pointer(s, run, index, field));
 
-   static object? Value(RomSession s, ITableRun run, int index, string field) =>
+   internal static object? Value(RomSession s, ITableRun run, int index, string field) =>
       Fields(run).FirstOrDefault(x => x.Key == field) is { } f ? ReadField(s, run, index, f) : null;
 
    /// <summary>One row as field -> value. Pointers become '&lt;ABCDEF&gt;' (or null), not their nested text.</summary>
-   static Dictionary<string, object?> Row(RomSession s, ITableRun run, int index, bool skipPointers) {
+   internal static Dictionary<string, object?> Row(RomSession s, ITableRun run, int index, bool skipPointers) {
       var row = new Dictionary<string, object?> { ["_index"] = index };
       foreach (var f in Fields(run)) {
          if (f.Seg.Length == 0 && f.Seg is not ArrayRunCalculatedSegment) continue;

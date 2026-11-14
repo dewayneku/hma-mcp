@@ -327,7 +327,7 @@ public static class DataTools {
    static string Hex(IDataModel model, int address, int length) =>
       "0x" + string.Concat(Enumerable.Range(address, length).Select(a => model[a].ToString("X2")));
 
-   static void WriteField(RomSession s, ITableRun run, int index, Field f, string value) {
+   internal static void WriteField(RomSession s, ITableRun run, int index, Field f, string value) {
       var model = s.Model;
       var address = run.Start + run.ElementLength * index + f.Offset;
       var seg = f.Seg;

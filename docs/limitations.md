@@ -20,16 +20,19 @@ Tested so far: FireRed (U) 1.0 (BPRE0), 2026-11-10, with these tasks:
 | Text by address | Read the Pallet Town sign text, grow it (moved, sign pointer updated), undo; line breaks and new boxes | ✅ new `read_text`, `write_text` |
 | Graphics | View Charmander's front/back/shiny sprites, an overworld sprite's frames, a Pokémon icon, the title-screen tilemap; export to PNG, flip and re-import (indexed and truecolor, smart/cautious), edit a palette, undo each | ✅ new `view_image`, `import_image`, `read_palette`, `write_palette` (2026-11-14; Emerald too) |
 | Map pictures | Draw Pallet Town and Route 1 (FireRed), Littleroot Town (Emerald), with and without NPCs and event markers | ✅ new `render_map` |
+| Map editing | Add an NPC, sign and warp to Pallet Town and remove them; add the first NPC to a map with none; copy a house's blocks to another spot; resize Pallet Town on each side (NPCs stay in place); the same in Littleroot Town; undo each | ✅ new `add_map_event`, `remove_map_event`, `read_map_blocks`, `paint_map_blocks`, `view_blockset`, `resize_map` (2026-11-14) |
 | Round trip | save, reopen, re-read every edit, check `.toml` | ✅ moved anchors and free-space start are kept |
 
 Emerald (U) (BPEE0), 2026-11-10, with `tests/smoke_emerald.py`: Treecko's type and a rejected out-of-range speed, Potion price, a trainer team, Route 101 wild data by `where`, Littleroot Town by name and its events, an unchanged NPC script recompiled byte-identical, the town sign grown and moved (pointer updated) then undone, save → reopen. All ✅ with no Emerald-specific fixes needed. Note that species rows 252–276 are the unused `?` slots, so Treecko is row 277.
 
 ## Open
 
-### Maps: listing works, adding events doesn't have a helper
-**Tried:** finding Pallet Town's NPCs and signs, moving an NPC.
-**What happens:** `find_map` and `map_events` list everything on a map, with the table address and row index to edit each item with `write_table_field`. Overworld sprites show as numbers (`graphics: "23"`), because HMA's sprite list has no names. Indoor maps share their town's name, so `PALLET TOWN` matches 5 maps; `map_events` asks for an id then (`3.0` is the town itself). Adding an NPC, warp or sign (growing a list and its count) hasn't been tried. Only FireRed has been tested.
-**Workaround:** none tested yet. The count fields (`objectCount`, ...) are in the `events` table that `map_events` gives the address of, and each list is a table HMA should repoint when it grows, but that path hasn't been tried.
+### Maps: what's not covered yet
+- **Overworld sprites show as numbers** (`graphics: "23"`), because HMA's sprite list has no names. `view_image` on `graphics.overworld.sprites` with that row shows which one it is.
+- **Indoor maps share their town's name**, so `PALLET TOWN` matches 5 maps; tools then ask for an id (`3.0` is the town itself).
+- **No new maps, map connections or tileset (block) editing yet.** Connections can be changed with `write_table_field` on the list `map_events` gives; adding one, creating a map, or editing what a block looks like isn't covered.
+- **Removing events shifts the later ones down.** Warps on other maps that lead here by warp number, and scripts that refer to NPCs by local id, aren't updated. `remove_map_event` warns about this.
+- **A new event's script must already exist.** Write it first (e.g. `compile_script` or `hma_edit` into free space) and pass its address as `script`/`arg`.
 
 ### Nested data is one more call away
 **Tried:** reading Route 1's grass encounter list.
@@ -58,7 +61,6 @@ Emerald (U) (BPEE0), 2026-11-10, with `tests/smoke_emerald.py`: Treecko's type a
 
 ### Graphics: what's not covered yet
 - **Sprite size can't change.** An imported image must match the graphic's size (or all its pages side by side / stacked), as in HMA.
-- **Map tiles can't be edited.** `render_map` draws maps; changing blocks, tilesets or the layout is the next map task.
 - **Imports may move compressed graphics.** HMA's LZ compressor packs a little less tightly than the original game's, so even a small edit to a compressed sprite usually moves it to free space (pointers are updated; the result says `sprite_moved_from`). Importing an image identical to what's there writes nothing.
 - **Tilemaps export as plain color images**, not indexed, since their tiles use several palette pages.
 

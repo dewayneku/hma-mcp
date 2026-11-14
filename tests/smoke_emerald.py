@@ -75,6 +75,19 @@ try:
     m, png = c.call_image("render_map", map="0.9", events="objects")
     assert m["size_blocks"] == "20x20" and png_util.size(png) == (320, 320), m
 
+    # --- map editing on Emerald: an NPC in Littleroot, painted blocks, a resize; all undone
+    npcs = len(c.call("map_events", map="0.9")["events"]["objects"]["items"])
+    a = c.call("add_map_event", map="0.9", kind="npc", x=5, y=5, fields={"graphics": "5"})
+    assert a["index"] == npcs and a["event"]["elevation"] == "3", a
+    c.call("undo")
+    assert len(c.call("map_events", map="0.9")["events"]["objects"]["items"]) == npcs
+    blocks = c.call("read_map_blocks", map="0.9", x=0, y=0, width=2, height=2)
+    c.call("paint_map_blocks", map="0.9", x=0, y=0, blocks=["001 001", "001 001"])
+    c.call("undo")
+    assert c.call("read_map_blocks", map="0.9", x=0, y=0, width=2, height=2)["blocks"] == blocks["blocks"]
+    assert c.call("resize_map", map="0.9", right=2)["after"] == "22x20"
+    c.call("undo")
+
     # --- save -> reopen keeps the edit
     c.call("save")
     c.call("close_rom")

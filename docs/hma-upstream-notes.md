@@ -94,6 +94,12 @@ Each fix is on its own branch off `master` in the fork, so it can become a small
 **Fix idea:** a public import method taking the image, an optional palette address and the import type; have every write path update `SpriteAddress`/`PaletteAddress` when the run moves (as the Greedy path already does). Small to medium. Related to #6.
 **hma-mcp workaround:** `import_image` calls the private overloads by reflection, and finds the sprite and palette again afterwards through a pointer to each.
 
+### 14. Map editor operations need the UI view-model, and resizing is private: open
+**Where:** `ViewModels/Map/BlockMapViewModel.cs`: `ResizeMapData(MapDirection, int)` is private; `DrawBlock`, `ResizeMapData` and other edits call `tutorials.Complete(...)` unconditionally.
+**Problem:** Resizing a map (with its events and connections shifted) can only be reached through the editor's drag sliders, and constructing a `BlockMapViewModel` with no tutorials (as a headless caller would) makes those edits throw a NullReferenceException.
+**Fix idea:** make the resize a public method (or a model-level operation alongside `BlockmapRun.TryChangeSize`), and use `tutorials?.Complete(...)`. Small.
+**hma-mcp workaround:** `resize_map` calls `ResizeMapData` by reflection, and every map view is created with a real `MapTutorialsViewModel`. `paint_map_blocks` writes the block data directly.
+
 ---
 
 ## Not yet investigated

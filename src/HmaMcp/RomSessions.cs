@@ -109,6 +109,9 @@ public sealed class RomSessions {
       such as graphics.pokemon.sprites.front take a row, e.g. CHARMANDER); render_map draws a map. To change
       art, save it with view_image's save_to, edit the PNG, and import_image it back; read_palette and
       write_palette edit colors. Show the user the image before and after a graphics change.
+      Map editing: add_map_event / remove_map_event for NPCs, warps, triggers and signs (move or change
+      one with write_table_field on the list map_events gives); read_map_blocks + view_blockset to find
+      block ids, paint_map_blocks to place them; resize_map. Render the map before and after.
       Nothing touches the file on disk until save is called; save makes a timestamped backup of the
       original ROM the first time and writes HMA's .toml metadata next to the ROM, so the HMA GUI
       sees the same anchors. Every edit tool is one undo step (undo / redo).

@@ -109,6 +109,7 @@ Then just ask, for example:
 - *"Decompile `scripts.newgame.setflags` and explain what it does."*
 - *"Show me Charmander's shiny sprite, then make its flame blue."*
 - *"Draw Pallet Town with its NPCs."*
+- *"Copy one of Pallet Town's houses into the empty space at the bottom, then widen Route 1 by two blocks."*
 - *"Find 512 bytes of free space."*
 
 ## Tools
@@ -120,10 +121,12 @@ Then just ask, for example:
 | 🧭 | `resolve` | Anchor or address → what's there: type of data, table row and field, pointer count |
 | 📋 | `describe_table` · `read_table` | Table layout, and rows as JSON: enums as names, flag sets as lists, packed fields as objects, learnsets and teams as text; filter rows with `where` (`bank=3, map=19`) |
 | ✏️ | `write_table_field` | Set one field by row number or row name (`CHARMANDER`), checked against the field's size; also learnsets, TM lists, trainer teams |
-| 🗺️ | `find_map` · `map_events` | Find a map by name (`PALLET TOWN` → `3.0`), then list its NPCs, warps, trigger scripts, signs and connections, with addresses ready for `write_table_field` |
+| 🗺️ | `find_map` · `map_events` | Find a map by name (`PALLET TOWN` → `3.0`), then list its NPCs, warps, trigger scripts, signs and connections, with addresses ready for `write_table_field` (to move or change one) |
 | 🖼️ | `view_image` · `import_image` | See any sprite, tileset, tilemap or palette as an image (the assistant sees it too), save it as PNG, and import an edited PNG with HMA's palette fitting |
 | 🎨 | `read_palette` · `write_palette` | A palette's colors as `#RRGGBB`, and which graphics use it |
 | 🏞️ | `render_map` | A picture of a map, with NPCs and event markers |
+| 🧱 | `read_map_blocks` · `paint_map_blocks` · `view_blockset` | A map's blocks and movement permissions as hex grids; paint blocks (copy a building from one spot to another); see the tiles a map can use |
+| 🚪 | `add_map_event` · `remove_map_event` · `resize_map` | Add or remove NPCs, warps, triggers and signs; grow or shrink a map (events and connections stay in place) |
 | 💬 | `read_text` · `write_text` | Game text at an address (a script's message, say); longer text is moved and every pointer to it updated |
 | 📜 | `decompile_script` · `compile_script` | Event, battle, animation and trainer-AI scripts, with automatic repointing |
 | ⌨️ | `hma_edit` | Type into HMA's hex view using its full edit language (`^anchor`, `<pointer>`, `"text"`) |
@@ -139,7 +142,7 @@ HMA supports FireRed, LeafGreen, Emerald, Ruby and Sapphire, and hacks of them. 
 
 ```mermaid
 flowchart LR
-    A["Claude / any MCP client"] <-- "MCP over stdio" --> B["hma-mcp<br/>(26 tools)"]
+    A["Claude / any MCP client"] <-- "MCP over stdio" --> B["hma-mcp<br/>(32 tools)"]
     B --> C["HexManiac.Core<br/>(HMA's engine, built from source)"]
     C <--> D[("your ROM .gba<br/>+ HMA .toml metadata")]
 ```
