@@ -38,7 +38,7 @@ public static class BlockTools {
          record.PointerSources?.Count ?? 0);
    }
 
-   static (TilesetRef ts, int local) BlockLocation(RomSession s, MapRef m, int block) {
+   internal static (TilesetRef ts, int local) BlockLocation(RomSession s, MapRef m, int block) {
       int primary = PrimaryBlocks(s);
       var view = GraphicsTools.MapView(s, m.Bank, m.Map);
       if (block < 0 || block >= view.BlockRenders.Count) throw new McpException($"Block {block:X3} doesn't exist for map {m.Id} (000-{view.BlockRenders.Count - 1:X3}).");

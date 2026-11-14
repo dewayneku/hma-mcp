@@ -267,10 +267,16 @@ public static class MapEditTools {
       [Description("How many blocks to show")] int count = 256,
       [Description("Zoom 1-4")] int scale = 2) => sessions.With(s => {
       var m = FindOne(s, map);
+      int first = ParseHex(first_block.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? first_block[2..] : first_block, "first_block", 0x3FF, allowDecimal: !first_block.StartsWith("0x", StringComparison.OrdinalIgnoreCase));
+      return BlocksetImage(s, m, first, count, scale);
+   });
+
+   /// <summary>A labeled image of a map's blocks from first (rounded down to 8) for count blocks.</summary>
+   internal static CallToolResult BlocksetImage(RomSession s, MapRef m, int first, int count, int scale, Dictionary<string, object?>? extra = null) {
       var view = GraphicsTools.MapView(s, m.Bank, m.Map);
       var all = view.BlockPixels;
       int total = view.BlockRenders.Count;
-      int first = ParseHex(first_block.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? first_block[2..] : first_block, "first_block", 0x3FF, allowDecimal: !first_block.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) / 8 * 8;
+      first = first / 8 * 8;
       if (first >= total) throw new McpException($"This map has {total} blocks (000-{total - 1:X3}).");
       int rows = (Math.Min(total, first + Math.Clamp(count, 8, 1024)) - first + 7) / 8;
       // each block with its hex id printed under it
@@ -287,16 +293,15 @@ public static class MapEditTools {
          }
       }
       int primary = s.Model.IsFRLG() ? 0x280 : 0x200;
-      var info = new Dictionary<string, object?> {
-         ["map"] = $"{m.Id} {m.Name}",
-         ["total_blocks"] = total,
-         ["primary_tileset_blocks"] = $"000-{primary - 1:X3}",
-         ["secondary_tileset_blocks"] = total > primary ? $"{primary:X3}-{total - 1:X3}" : null,
-         ["shown"] = $"{first:X3}-{Math.Min(total, first + rows * 8) - 1:X3}",
-         ["layout"] = "8 blocks per row; each block's hex id is printed under it",
-      };
+      var info = extra ?? new Dictionary<string, object?>();
+      info["map"] = $"{m.Id} {m.Name}";
+      info["total_blocks"] = total;
+      info["primary_tileset_blocks"] = $"000-{primary - 1:X3}";
+      info["secondary_tileset_blocks"] = total > primary ? $"{primary:X3}-{total - 1:X3}" : null;
+      info["shown"] = $"{first:X3}-{Math.Min(total, first + rows * 8) - 1:X3}";
+      info["layout"] = "8 blocks per row; each block's hex id is printed under it";
       return GraphicsTools.Result(info, pixels, width, height, Math.Clamp(scale, 1, 4), "");
-   });
+   }
 
    // ---------- resize ----------
 

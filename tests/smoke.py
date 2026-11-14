@@ -30,7 +30,7 @@ expected = {"open_rom", "rom_info", "save", "undo", "redo", "close_rom", "list_a
             "add_map_event", "remove_map_event", "read_map_blocks", "paint_map_blocks", "view_blockset", "resize_map",
             "create_map", "connect_maps", "disconnect_maps",
             "add_fly_spot", "read_town_map", "paint_town_map", "view_overworld_sprites",
-            "read_block", "write_block", "list_block_behaviors", "view_tiles"}
+            "read_block", "write_block", "list_block_behaviors", "view_tiles", "import_tileset"}
 assert expected <= set(names), f"missing tools: {expected - set(names)}"
 c.call("rom_info", expect_error=True)
 
@@ -419,6 +419,41 @@ assert c.call_image("read_block", map="3.19", block="0D4")[0]["behavior"] == "00
 t, png = c.call_image("view_tiles", map="3.0", tileset="secondary", count=32)
 assert t["tiles"].startswith("280-") and t["shown"] == "280-29F", t
 
+# --- a custom tileset from a PNG (generated here: no third-party art in the repo).
+# 64x32: left half a two-color checker ground, right half a transparent ring "object" (2x2 cells each).
+rows = []
+for y in range(32):
+    row = bytearray()
+    for x in range(64):
+        if x < 32:
+            r, g, b = ((40, 120, 200) if ((x // 8) + (y // 8)) % 2 else (230, 210, 150))
+            row += bytes((r, g, b, 255))
+        else:
+            d = ((x - 47.5) ** 2 + (y - 15.5) ** 2) ** 0.5  # centered between pixels: exact mirror symmetry
+            row += bytes((200, 30, 30, 255)) if 8 <= d <= 13 else bytes((0, 0, 0, 0))
+    rows.append(row)
+tileset_png = os.path.join(work, "custom_tileset.png")
+png_util.write(tileset_png, 64, 32, 6, None, rows)
+imp, png = c.call_image("import_tileset", map=n["id"], file=tileset_png, parts=[
+    {"x": 0, "y": 0, "width": 32, "height": 32, "layer": "ground", "name": "checker"},
+    {"x": 32, "y": 0, "width": 32, "height": 32, "layer": "object", "under": "part:0", "behavior": "Normal", "name": "ring"}])
+# the checker repeats every 16 px, so its 4 cells are one block made of 2 solid tiles; the ring's quarters are
+# mirror images, so they share tiles too
+assert imp["parts"][0]["blocks"] == ["280 280", "280 280"], imp["parts"]
+assert int(imp["tiles"].split()[0]) <= 8 and imp["palettes"].startswith("1 of 6"), imp
+ring = imp["parts"][1]["blocks"]
+assert len(ring) == 2 and all(len(r.split()) == 2 for r in ring), ring
+# the ring's top layer reuses mirrored tiles: a ring is symmetric, so its 4 quarters share tiles
+c.call("paint_map_blocks", map=n["id"], x=0, y=0, blocks=imp["parts"][0]["blocks"])
+c.call("paint_map_blocks", map=n["id"], x=2, y=0, blocks=ring)
+blk = c.call_image("read_block", map=n["id"], block=ring[0].split()[0])[0]
+assert blk["tileset"] == "secondary" and blk["top"][0] != "000 0 -", blk
+r, png = c.call_image("render_map", map=n["id"])
+assert png_util.size(png) == (320, 320)
+c.call("import_tileset", expect_error=True, map=n["id"], file=os.path.join(work, "nope.png"))
+c.call("import_tileset", expect_error=True, map=n["id"], file=tileset_png, parts=[{"x": 0, "y": 0, "width": 16, "height": 16, "layer": "object", "under": "2C0"}])  # under must be primary
+c.call("import_tileset", expect_error=True, map=n["id"], file=tileset_png, parts=[{"x": 100, "y": 0, "width": 16, "height": 16}])  # outside the image
+
 # --- save round-trip: reopen and check every edit stuck, and the metadata kept our anchor
 saved = c.call("save")
 assert saved["backup"] and os.path.exists(saved["backup"]), saved
@@ -432,6 +467,7 @@ assert c.call("map_events", map=n["id"])["name"] == "ROUTE 22"  # the new map, i
 assert len(c.call("map_events", map=n["id"])["events"]["warps"]["items"]) == 1
 assert any(x["to"].startswith(n["id"]) for x in c.call("map_events", map="3.0")["connections"]["items"])
 assert c.call("read_table", table="data.maps.fly.spawn", start=20, count=1)["rows"][0]["x"] == 7  # the fly spot survives too
+assert c.call("read_block", map=n["id"], block=ring[0].split()[0])["top"] == blk["top"]  # and the imported tileset
 assert c.call("read_town_map", region="kanto")["rows"][8].split()[1] == "034"
 # the backup must still be the untouched original
 with open(source_rom, "rb") as a, open(saved["backup"], "rb") as b:

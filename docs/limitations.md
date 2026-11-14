@@ -21,6 +21,8 @@ Tested so far: FireRed (U) 1.0 (BPRE0), 2026-11-10, with these tasks:
 | Graphics | View Charmander's front/back/shiny sprites, an overworld sprite's frames, a Pokémon icon, the title-screen tilemap; export to PNG, flip and re-import (indexed and truecolor, smart/cautious), edit a palette, undo each | ✅ new `view_image`, `import_image`, `read_palette`, `write_palette` (2026-11-14; Emerald too) |
 | Map pictures | Draw Pallet Town and Route 1 (FireRed), Littleroot Town (Emerald), with and without NPCs and event markers | ✅ new `render_map` |
 | Map editing | Add an NPC, sign and warp to Pallet Town and remove them; add the first NPC to a map with none; copy a house's blocks to another spot; resize Pallet Town on each side (NPCs stay in place); the same in Littleroot Town; undo each | ✅ new `add_map_event`, `remove_map_event`, `read_map_blocks`, `paint_map_blocks`, `view_blockset`, `resize_map` (2026-11-14) |
+| Blocks | Read Route 1's tall grass; change a block's behavior, layer and a tile, undo; tiles with ids (FireRed and Emerald) | ✅ new `read_block`, `write_block`, `list_block_behaviors`, `view_tiles` |
+| Custom tilesets | Undead top-down tileset: cliffs as ground, dead trees and a skull as objects over grass (FireRed); cobble ground from it plus a seabed mermaid house and coral reef from another pack in one tileset (Emerald); a generated PNG in the tests, kept through save and reopen | ✅ new `import_tileset` (2026-11-14) |
 | New maps, connections | Create a route like Route 1 (named ROUTE 22), connect it east of Pallet Town, add a warp, save and reopen; disconnect and undo; a map in a new bank; the same with Littleroot Town in Emerald | ✅ new `create_map`, `connect_maps`, `disconnect_maps` |
 | Round trip | save, reopen, re-read every edit, check `.toml` | ✅ moved anchors and free-space start are kept |
 
@@ -29,7 +31,10 @@ Emerald (U) (BPEE0), 2026-11-10, with `tests/smoke_emerald.py`: Treecko's type a
 ## Open
 
 ### Maps: what's not covered yet
-- **Custom tilesets from images aren't covered yet** (in progress). Existing blocks can be changed with `write_block` (tiles, behavior, layer); a primary-tileset block changes on every map that uses that tileset.
+- **A custom tileset is one import.** `import_tileset` builds a map's whole secondary tileset from the parts you give it (from one or several PNGs); importing again replaces it. Put everything a map needs in one call. Maps made with `create_map like` that map share it.
+- **The GBA's limits apply to a custom tileset:** FireRed 384 tiles, 384 blocks, 6 palettes; Emerald 512, 512, 7 (15 colors each). The result says how much is used. Colors are reduced to fit, so very colorful art loses some shades.
+- **Imported tilesets have no animation** (e.g. moving water), and ground parts fill transparent pixels with the cell's main color.
+- **Primary-tileset blocks are shared.** `write_block` on a primary block (grass, paths) changes it on every map using that tileset.
 - **Indoor maps share their town's name**, as in the game's data; `find_map` shows each map's `type` (town, route, indoor, ...) to tell them apart.
 - **New region names can't be added.** The region name list (`data.maps.names`) has a fixed size that the game's code relies on. A new map can use an existing name; for its own Fly spot and Town Map squares, use a name no other Fly spot uses.
 - **Fly needs the visit flag.** `add_fly_spot` adds the destination; in the game it appears in the Fly menu after the player has been there.

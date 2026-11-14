@@ -114,6 +114,8 @@ public sealed class RomSessions {
       block ids, paint_map_blocks to place them; resize_map. New maps: create_map (modeled on an existing
       map), then connect_maps / disconnect_maps, warps, add_fly_spot and paint_town_map. NPC looks:
       view_overworld_sprites. Blocks: read_block / write_block (tiles, behavior, layer), view_tiles.
+      Custom art: import_tileset turns PNG parts into a map's own tileset (one call with every part the map
+      needs); paint the block ids it returns with paint_map_blocks.
       Render the map before and after.
       Nothing touches the file on disk until save is called; save makes a timestamped backup of the
       original ROM the first time and writes HMA's .toml metadata next to the ROM, so the HMA GUI

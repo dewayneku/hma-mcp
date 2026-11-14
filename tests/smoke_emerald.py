@@ -104,6 +104,17 @@ try:
     assert c.call("read_block", map="0.16", block="00D")["layer"] == "normal"
     assert c.call("view_tiles", map="0.16", tileset="secondary", count=16)["tiles"].startswith("200-")
 
+    # --- a custom tileset from a generated PNG on a new map, then undone
+    rows = [bytearray(b"".join(bytes((40, 120, 200, 255)) if ((x // 8) + (y // 8)) % 2 else bytes((230, 210, 150, 255)) for x in range(32))) for y in range(16)]
+    tileset_png = os.path.join(work, "custom.png")
+    png_util.write(tileset_png, 32, 16, 6, None, rows)
+    n = c.call("create_map", like="0.16", width=10, height=10)
+    imp = c.call("import_tileset", map=n["id"], file=tileset_png)  # no parts: the whole (opaque) image as ground
+    assert imp["parts"][0]["blocks"] == ["200 200"] and imp["palettes"].startswith("1 of 7"), imp
+    c.call("paint_map_blocks", map=n["id"], x=0, y=0, blocks=["200 200"])
+    assert c.call("read_block", map=n["id"], block="200")["tileset"] == "secondary"
+    c.call("undo"); c.call("undo"); c.call("undo")
+
     # --- save -> reopen keeps the edit
     c.call("save")
     c.call("close_rom")

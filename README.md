@@ -111,6 +111,7 @@ Then just ask, for example:
 - *"Draw Pallet Town with its NPCs."*
 - *"Copy one of Pallet Town's houses into the empty space at the bottom, then widen Route 1 by two blocks."*
 - *"Make a new route east of Pallet Town that looks like Route 1."*
+- *"Import the ground and the dead trees from my tileset PNG into that route, then put a river and a grove on it."*
 - *"Find 512 bytes of free space."*
 
 ## Tools
@@ -132,6 +133,7 @@ Then just ask, for example:
 | 🕊️ | `add_fly_spot` · `read_town_map` · `paint_town_map` | Make a map a Fly destination; put it on the Town Map |
 | 🧍 | `view_overworld_sprites` | A labeled sheet of NPC sprites, to pick one by number |
 | 🧩 | `read_block` · `write_block` · `list_block_behaviors` · `view_tiles` | What a block is made of (8 tiles, 2 layers) and how it behaves (grass, water, door, ...); change either |
+| 🎨 | `import_tileset` | Turn a top-down PNG tileset (or several images) into a map's own tileset: ground blocks, and objects like trees and houses drawn over them with transparency; colors fitted to the GBA, duplicate and mirrored tiles shared |
 | 💬 | `read_text` · `write_text` | Game text at an address (a script's message, say); longer text is moved and every pointer to it updated |
 | 📜 | `decompile_script` · `compile_script` | Event, battle, animation and trainer-AI scripts, with automatic repointing |
 | ⌨️ | `hma_edit` | Type into HMA's hex view using its full edit language (`^anchor`, `<pointer>`, `"text"`) |
@@ -147,7 +149,7 @@ HMA supports FireRed, LeafGreen, Emerald, Ruby and Sapphire, and hacks of them. 
 
 ```mermaid
 flowchart LR
-    A["Claude / any MCP client"] <-- "MCP over stdio" --> B["hma-mcp<br/>(43 tools)"]
+    A["Claude / any MCP client"] <-- "MCP over stdio" --> B["hma-mcp<br/>(44 tools)"]
     B --> C["HexManiac.Core<br/>(HMA's engine, built from source)"]
     C <--> D[("your ROM .gba<br/>+ HMA .toml metadata")]
 ```

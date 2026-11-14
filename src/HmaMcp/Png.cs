@@ -85,7 +85,8 @@ public static class Png {
    }
 
    /// <summary>A decoded PNG. Indices/Palette are set when the file is an indexed PNG.</summary>
-   public sealed record Image(int Width, int Height, short[] Pixels, int[,]? Indices, short[]? Palette);
+   /// <summary>Transparent is set when the PNG has transparency (alpha below 50%, or a transparent palette entry).</summary>
+   public sealed record Image(int Width, int Height, short[] Pixels, int[,]? Indices, short[]? Palette, bool[]? Transparent = null);
 
    public static Image Decode(byte[] file) {
       if (file.Length < 8 || file[0] != 137 || file[1] != 80 || file[2] != 78 || file[3] != 71)
@@ -129,6 +130,7 @@ public static class Png {
       var pixels = new short[width * height];
       var indices = colorType == 3 ? new int[width, height] : null;
       short[]? palette = null;
+      bool[]? transparent = null;
       if (colorType == 3) {
          if (plte == null) throw new McpException("Indexed PNG has no palette.");
          palette = new short[plte.Length / 3];
@@ -152,12 +154,15 @@ public static class Png {
                if (colorType == 3) {
                   indices![x, y] = v;
                   color = v < palette!.Length ? palette[v] : (short)0;
+                  if (trns != null && v < trns.Length && trns[v] < 128) (transparent ??= new bool[width * height])[y * width + x] = true;
                } else {
                   int g = v * 255 / ((1 << depth) - 1);
                   color = FromRgb(g, g, g);
                }
             } else {
                int o = x * channels;
+               int alpha = colorType == 6 ? cur[o + 3] : colorType == 4 ? cur[o + 1] : 255;
+               if (alpha < 128) (transparent ??= new bool[width * height])[y * width + x] = true;
                color = colorType switch {
                   0 or 4 => FromRgb(cur[o], cur[o], cur[o]),
                   _ => FromRgb(cur[o], cur[o + 1], cur[o + 2]),
@@ -167,7 +172,7 @@ public static class Png {
          }
          (prev, cur) = (cur, prev);
       }
-      return new Image(width, height, pixels, indices, palette);
+      return new Image(width, height, pixels, indices, palette, transparent);
    }
 
    static int Paeth(int a, int b, int c) {

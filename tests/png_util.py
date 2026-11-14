@@ -1,4 +1,4 @@
-"""Tiny PNG reader/writer (8-bit RGB or indexed, no interlacing) for the hma-mcp tests. Standard library only."""
+"""Tiny PNG reader/writer (8-bit RGB, RGBA or indexed, no interlacing) for the hma-mcp tests. Standard library only."""
 import struct
 import zlib
 
@@ -10,7 +10,8 @@ def size(data):
 
 
 def read(path):
-    """Returns (width, height, color_type, palette_bytes_or_None, rows). Rows are bytearrays without the filter byte."""
+    """Returns (width, height, color_type, palette_bytes_or_None, rows). Rows are bytearrays without the filter byte.
+    write() takes the same: color type 2 (RGB), 3 (indexed, with plte) or 6 (RGBA)."""
     d = open(path, "rb").read()
     p, idat, plte = 8, b"", None
     while p < len(d):
@@ -25,7 +26,7 @@ def read(path):
             idat += body
         p += 12 + n
     raw = zlib.decompress(idat)
-    bpp = {3: 1, 2: 3}[ct]
+    bpp = {3: 1, 2: 3, 6: 4}[ct]
     stride = w * bpp
     rows, prev = [], bytearray(stride)
     for y in range(h):
