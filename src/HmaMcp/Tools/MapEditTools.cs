@@ -46,14 +46,22 @@ public static class MapEditTools {
       "Add an NPC/object, warp, trigger (step-on script) or sign to a map, the way HMA's map editor does (it creates the event list if the map has none, " +
       "picks a free NPC id, and moves the list if it grows). Set its position with x/y (blocks, as in map_events) and any other fields by name, " +
       "e.g. npc: {graphics: '5', script: '<165838>', moveType: '8'}; warp: {bank: '4', map: '1', warpID: '0'}; sign: {kind: '0', arg: '<165838>'}; " +
-      "trigger: {trigger: '0x4050', index: '0', script: '<...>'}. Field names are the ones map_events shows. elevation defaults to the one most of this map's events of that kind use. One undo step. Check the result with render_map.")]
+      "trigger: {trigger: '0x4050', index: '0', script: '<...>'}. Or pass message to have a talk script written for an npc or sign. Field names are the ones map_events shows. elevation defaults to the one most of this map's events of that kind use. One undo step. Check the result with render_map.")]
    public static string AddMapEvent(RomSessions sessions,
       [Description("Map id 'bank.map' or a unique map name")] string map,
       [Description("'npc', 'warp', 'trigger' or 'sign'")] string kind,
       [Description("Block x")] int x,
       [Description("Block y")] int y,
-      [Description("Other fields to set, by name (values as write_table_field takes them)")] Dictionary<string, string>? fields = null) => sessions.Edit(s => {
+      [Description("Other fields to set, by name (values as write_table_field takes them)")] Dictionary<string, string>? fields = null,
+      [Description("npc or sign only: text it says. A simple script is written for it (npc: faces the player and shows the text; sign: shows the text). Line breaks as in write_text.")] string message = "") => sessions.Edit(s => {
       var k = Kind(kind);
+      string? scriptField = null, scriptValue = null;
+      if (!string.IsNullOrWhiteSpace(message)) {
+         if (k.Name is not ("npc" or "sign")) throw new McpException("message works for an npc or a sign. For a trigger, write its script with compile_script and pass script.");
+         scriptField = k.Name == "npc" ? "script" : "arg";
+         if (fields != null && fields.ContainsKey(scriptField)) throw new McpException($"Pass either message or {scriptField}, not both.");
+         scriptValue = $"<{TalkScript(s, message, k.Name == "sign").ToAddress()}>";
+      }
       var m = FindOne(s, map);
       var (width, height) = MapSize(s, m);
       if (x < 0 || y < 0 || x >= width || y >= height) throw new McpException($"({x}, {y}) is outside the map ({width}x{height} blocks).");
@@ -84,6 +92,7 @@ public static class MapEditTools {
       int index = list.ElementCount - 1;
       var values = new List<(string, string)> { ("x", x.ToString()), ("y", y.ToString()) };
       if (elevation != null) values.Add(("elevation", elevation));
+      if (scriptField != null) values.Add((scriptField, scriptValue!));
       if (fields != null) values.AddRange(fields.Select(kv => (kv.Key, kv.Value)));
       foreach (var (name, value) in values) {
          list = EventList(s, m, k)!;
@@ -104,7 +113,7 @@ public static class MapEditTools {
 
    [McpServerTool(Name = "remove_map_event", Destructive = true), Description(
       "Remove an NPC/object, warp, trigger or sign from a map by its index in map_events. Later events of that kind shift down one index. " +
-      "Removing a warp can break warps on other maps that lead to this map by warp number; removing an NPC can break scripts that move it by its local id. One undo step.")]
+      "Removing a warp renumbers warps on any map that lead to this map's later warps, and lists any that led to the removed one. One undo step.")]
    public static string RemoveMapEvent(RomSessions sessions,
       [Description("Map id 'bank.map' or a unique map name")] string map,
       [Description("'npc', 'warp', 'trigger' or 'sign'")] string kind,
@@ -119,14 +128,39 @@ public static class MapEditTools {
       var events = k.Existing(view, view.EventGroup);
       if (index >= events.Count || !events[index].Delete()) throw new McpException($"HMA couldn't remove {k.Name} {index}.");
       var after = EventList(s, m, k);
+
+      // Warps anywhere that lead to this map by warp number: later numbers move down one; ones that led to the removed warp are reported.
+      var renumbered = new List<string>();
+      var dangling = new List<string>();
+      if (k.Name == "warp") {
+         var warpKind = Kinds.First(x => x.Name == "warp");
+         foreach (var other in AllMaps(s)) {
+            var warps = EventList(s, other, warpKind);
+            if (warps == null) continue;
+            var fields = Fields(warps);
+            Field? F(string name) => fields.FirstOrDefault(f => f.Key == name);
+            if (F("bank") is not { } fb || F("map") is not { } fm || F("warpID") is not { } fw) continue;
+            for (int i = 0; i < warps.ElementCount; i++) {
+               if (Convert.ToInt32(ReadField(s, warps, i, fb)) != m.Bank || Convert.ToInt32(ReadField(s, warps, i, fm)) != m.Map) continue;
+               int id = Convert.ToInt32(ReadField(s, warps, i, fw));
+               if (id == index) dangling.Add($"{other.Id} warp {i}");
+               else if (id > index && id < 0xFF) {
+                  WriteField(s, warps, i, fw, (id - 1).ToString());
+                  renumbered.Add($"{other.Id} warp {i}: {id} -> {id - 1}");
+               }
+            }
+         }
+      }
       return Json.Of(new {
          map = $"{m.Id} {m.Name}",
          kind = k.Name,
          removed,
          remaining = after?.ElementCount ?? 0,
+         warps_renumbered = renumbered.Count > 0 ? renumbered : null,
+         warps_now_leading_nowhere = dangling.Count > 0 ? dangling : null,
          warning = k.Name switch {
-            "warp" => "Warps on other maps that lead here by warp number may now point at a different warp.",
-            "npc" => "Scripts that move or hide NPCs by local id may refer to a different NPC now.",
+            "warp" when dangling.Count > 0 => "These warps led to the removed warp. Point them at another warp of this map (write_table_field warpID) or remove them.",
+            "npc" => $"Other NPCs keep their local ids. Scripts that refer to the removed NPC's id ({removed.GetValueOrDefault("id")}) no longer find it.",
             _ => null,
          },
       });
@@ -225,7 +259,7 @@ public static class MapEditTools {
    });
 
    [McpServerTool(Name = "view_blockset", ReadOnly = true), Description(
-      "The blocks a map can use (its primary and secondary tilesets), as an image 8 blocks wide: the block at row r, column c is id first_block + r*8 + c. " +
+      "The blocks a map can use (its primary and secondary tilesets), as an image 8 blocks wide with each block's hex id printed under it. " +
       "Use with read_map_blocks (to see which ids an existing building or path uses) and paint_map_blocks.")]
    public static CallToolResult ViewBlockset(RomSessions sessions,
       [Description("Map id 'bank.map' or a unique map name")] string map,
@@ -239,10 +273,19 @@ public static class MapEditTools {
       int first = ParseHex(first_block.StartsWith("0x", StringComparison.OrdinalIgnoreCase) ? first_block[2..] : first_block, "first_block", 0x3FF, allowDecimal: !first_block.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) / 8 * 8;
       if (first >= total) throw new McpException($"This map has {total} blocks (000-{total - 1:X3}).");
       int rows = (Math.Min(total, first + Math.Clamp(count, 8, 1024)) - first + 7) / 8;
-      int width = 8 * 16, height = rows * 16, top = first / 8 * 16;
-      var pixels = new short[width * height];
-      for (int yy = 0; yy < height && top + yy < all.PixelHeight; yy++)
-         Array.Copy(all.PixelData, (top + yy) * all.PixelWidth, pixels, yy * width, width);
+      // each block with its hex id printed under it
+      const int cellW = 18, cellH = 16 + Labels.Height + 2;
+      int width = 8 * cellW, height = rows * cellH, top = first / 8 * 16;
+      var pixels = Enumerable.Repeat(Png.FromRgb(64, 64, 72), width * height).ToArray();
+      for (int r = 0; r < rows; r++) {
+         for (int c = 0; c < 8; c++) {
+            int id = first + r * 8 + c;
+            if (id >= total) break;
+            for (int yy = 0; yy < 16 && top + r * 16 + yy < all.PixelHeight; yy++)
+               Array.Copy(all.PixelData, (top + r * 16 + yy) * all.PixelWidth + c * 16, pixels, (r * cellH + yy) * width + c * cellW + 1, 16);
+            Labels.Draw(pixels, width, c * cellW + 2, r * cellH + 16, id.ToString("X3"));
+         }
+      }
       int primary = s.Model.IsFRLG() ? 0x280 : 0x200;
       var info = new Dictionary<string, object?> {
          ["map"] = $"{m.Id} {m.Name}",
@@ -250,7 +293,7 @@ public static class MapEditTools {
          ["primary_tileset_blocks"] = $"000-{primary - 1:X3}",
          ["secondary_tileset_blocks"] = total > primary ? $"{primary:X3}-{total - 1:X3}" : null,
          ["shown"] = $"{first:X3}-{Math.Min(total, first + rows * 8) - 1:X3}",
-         ["layout"] = $"8 blocks per row, 16x16 px each: block id = {first:X3} + row*8 + column (hex)",
+         ["layout"] = "8 blocks per row; each block's hex id is printed under it",
       };
       return GraphicsTools.Result(info, pixels, width, height, Math.Clamp(scale, 1, 4), "");
    });
@@ -401,6 +444,8 @@ public static class MapEditTools {
       var existing = Connections(s, a);
       if (existing.Any(c => c.mapGroup == bMap.Bank && c.mapNum == bMap.Map && c.direction == dir))
          throw new McpException($"{a.Id} is already connected to {bMap.Id} going {dir.ToString().ToLowerInvariant()}.");
+      CheckConnectionSpace(s, a, dir, off, vertical ? bw : bh, vertical ? aw : ah, bMap);
+      CheckConnectionSpace(s, bMap, dir.Reverse(), z ? 0 : -off, vertical ? aw : ah, vertical ? bw : bh, a);
 
       var viewA = GraphicsTools.MapView(s, a.Bank, a.Map);
       var viewB = GraphicsTools.MapView(s, bMap.Bank, bMap.Map);
@@ -450,6 +495,33 @@ public static class MapEditTools {
       return Json.Of(new { map = $"{a.Id} {a.Name}", direction = dir.ToString().ToLowerInvariant(), removed, remaining = Connections(s, a).Count });
    });
 
+   /// <summary>
+   /// The new neighbor's span [offset, offset+length) along this map's edge must touch the edge and not overlap a neighbor
+   /// already on that side (the same rule HMA's map editor uses). Dive/emerge: one per map.
+   /// </summary>
+   static void CheckConnectionSpace(RomSession s, MapRef m, MapDirection dir, int offset, int length, int edgeLength, MapRef neighbor) {
+      var side = Connections(s, m).Where(c => c.direction == dir).ToList();
+      var name = dir.ToString().ToLowerInvariant();
+      if (dir is MapDirection.Dive or MapDirection.Emerge) {
+         if (side.Count > 0) throw new McpException($"{m.Id} already has a {name} connection (to {side[0].mapGroup}.{side[0].mapNum}).");
+         return;
+      }
+      if (offset + length <= 0 || offset >= edgeLength)
+         throw new McpException($"With offset {offset}, {neighbor.Id} wouldn't touch {m.Id}'s {name} edge ({edgeLength} blocks long). Use an offset from {1 - length} to {edgeLength - 1}.");
+      bool vertical = dir is MapDirection.Up or MapDirection.Down;
+      foreach (var c in side) {
+         var other = new MapRef(c.mapGroup, c.mapNum, "", 0);
+         int otherLength;
+         try {
+            var (ow, oh) = MapSize(s, FindOne(s, other.Id));
+            otherLength = vertical ? ow : oh;
+         } catch (McpException) { continue; }
+         if (offset < c.offset + otherLength && c.offset < offset + length)
+            throw new McpException($"{m.Id}'s {name} edge already has {other.Id} at blocks {c.offset} to {c.offset + otherLength - 1}; {neighbor.Id} would cover {offset} to {offset + length - 1}. " +
+               "Pick an offset that doesn't overlap, or disconnect_maps first.");
+      }
+   }
+
    static List<(MapDirection direction, int offset, int mapGroup, int mapNum)> Connections(RomSession s, MapRef m) {
       var header = TableAt(s, m.Header);
       var con = header == null ? null : Sub(s, header, 0, "connections");
@@ -460,6 +532,21 @@ public static class MapEditTools {
          s.Model.ReadMultiByteValue(list.Start + i * list.ElementLength + 4, 4),
          (int)s.Model[list.Start + i * list.ElementLength + 8],
          (int)s.Model[list.Start + i * list.ElementLength + 9])).ToList();
+   }
+
+   /// <summary>Write the text and a standard talk script for it into free space; returns the script's address.</summary>
+   static int TalkScript(RomSession s, string message, bool sign) {
+      var text = TextTools.Escape(message);
+      var bytes = s.Model.TextConverter.Convert(text, out var bad);
+      if (bad) throw new McpException("The message has characters the game's font doesn't have. Use read_text on existing text to see what's allowed.");
+      var textStart = s.Model.FindFreeSpace(s.Model.FreeSpaceStart, bytes.Count);
+      if (textStart < 0) throw new McpException("No free space for the message.");
+      s.Token.ChangeData(s.Model, textStart, bytes.ToArray());
+      s.Model.ObserveRunWritten(s.Token, new PCSRun(s.Model, textStart, bytes.Count));
+      var lines = sign
+         ? new[] { $"msgbox.sign <{textStart.ToAddress()}>", "end" }
+         : new[] { "lock", "faceplayer", $"msgbox.default <{textStart.ToAddress()}>", "release", "end" };
+      return ScriptTools.CompileNew(s, string.Concat(lines.Select(line => "  " + line + Environment.NewLine)));
    }
 
    // ---------- helpers ----------

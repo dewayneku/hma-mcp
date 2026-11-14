@@ -28,7 +28,8 @@ expected = {"open_rom", "rom_info", "save", "undo", "redo", "close_rom", "list_a
             "find_map", "map_events", "read_text", "write_text",
             "view_image", "read_palette", "write_palette", "import_image", "render_map",
             "add_map_event", "remove_map_event", "read_map_blocks", "paint_map_blocks", "view_blockset", "resize_map",
-            "create_map", "connect_maps", "disconnect_maps"}
+            "create_map", "connect_maps", "disconnect_maps",
+            "add_fly_spot", "read_town_map", "paint_town_map", "view_overworld_sprites"}
 assert expected <= set(names), f"missing tools: {expected - set(names)}"
 c.call("rom_info", expect_error=True)
 
@@ -116,9 +117,21 @@ assert "unused_2" in [f["name"] for f in c.call("describe_table", table="data.po
 lv = c.call("read_table", table="data.pokemon.moves.levelup", start=2, count=1)["rows"][0]["movesFromLevel"]
 r = c.call("write_table_field", table="data.pokemon.moves.levelup", row="IVYSAUR", field="movesFromLevel", value=lv.replace("\r\n", "\n") + '\n("VINE WHIP" 70)')
 assert r["after"].endswith('("VINE WHIP" 70)') and "warning" not in r, r
-r = c.call("write_table_field", table="data.pokemon.moves.levelup", row="IVYSAUR", field="movesFromLevel", value="(NOTAMOVE 5)")
-assert r.get("changed_lines"), r  # HMA stores a default for unknown names: the tool must say so
+# HMA stores a default for unknown names: the write is refused and undone, unless accept_changes
+before_typo = c.call("read_table", table="data.pokemon.moves.levelup", start=2, count=1)["rows"][0]["movesFromLevel"]
+err = c.call("write_table_field", expect_error=True, table="data.pokemon.moves.levelup", row="IVYSAUR", field="movesFromLevel", value="(NOTAMOVE 5)")
+assert "NOTAMOVE" in err and "Nothing was written" in err, err
+assert c.call("read_table", table="data.pokemon.moves.levelup", start=2, count=1)["rows"][0]["movesFromLevel"] == before_typo
+r = c.call("write_table_field", table="data.pokemon.moves.levelup", row="IVYSAUR", field="movesFromLevel", value="(NOTAMOVE 5)", accept_changes=True)
+assert r.get("changed_lines") and r.get("warning"), r
 c.call("undo")
+# an empty pointer gets new data of the right format: Route 1 has no surf table
+route1_row = c.call("read_table", table="data.pokemon.wild", where="bank=3, map=19")["rows"][0]
+assert route1_row["surf"] == "null"
+r = c.call("write_table_field", table="data.pokemon.wild", row=str(route1_row["_index"]), field="surf", value="new")
+assert r["after"].startswith("rate : 0"), r
+c.call("undo")
+assert c.call("read_table", table="data.pokemon.wild", where="bank=3, map=19")["rows"][0]["surf"] == "null"
 brock = c.call("read_table", table="data.trainers.stats", where="name=BROCK", count=1, fields="pokemonCount,pokemon")["rows"][0]
 team = brock["pokemon"] + '\n15 ONIX (IVs=0)\n- TACKLE\n- BIND\n- "ROCK TOMB"\n- -\n'
 c.call("write_table_field", table="data.trainers.stats", row=str(brock["_index"]), field="pokemon", value=team)
@@ -129,7 +142,9 @@ assert len(route1) == 1, route1
 grass = route1[0]["grass"]
 r = c.call("write_table_field", table="data.pokemon.wild", row=str(route1[0]["_index"]), field="grass", value=grass.replace("rate : ", "rate : 1"))
 assert r["after"] != grass and "warning" not in r, r
-c.call("write_table_field", expect_error=True, table="data.pokemon.wild", row=str(route1[0]["_index"]), field="surf", value="rate : 1")
+r = c.call("write_table_field", table="data.pokemon.wild", row=str(route1[0]["_index"]), field="surf", value="rate : 1")  # null pointer: data is created, then written
+assert r["after"].startswith("rate : 1"), r
+c.call("undo")
 
 # --- errors from inside HMA come back with a message, not "An error occurred"
 c.call("write_table_field", expect_error=True, table="data.pokemon.moves.levelup", row="IVYSAUR", field="movesFromLevel", value="@FFFFFFFF")
@@ -315,7 +330,7 @@ assert c.call("read_map_blocks", map="3.0", x=4, y=13, width=6, height=5)["block
 c.call("paint_map_blocks", expect_error=True, map="3.0", x=22, y=0, blocks=["001 001 001"])  # off the edge
 c.call("paint_map_blocks", expect_error=True, map="3.0", x=0, y=0, blocks=["3FF"])  # not in the tilesets
 bs, png = c.call_image("view_blockset", map="3.0", count=64)
-assert bs["primary_tileset_blocks"] == "000-27F" and png_util.size(png) == (256, 256), bs
+assert bs["primary_tileset_blocks"] == "000-27F" and png_util.size(png) == (288, 400), bs  # 8 blocks per row with id labels, 2x
 # resize: growing on the left shifts events right so they stay in place
 r = c.call("resize_map", map="3.0", left=2, bottom=1)
 assert (r["before"], r["after"]) == ("24x20", "26x21"), r
@@ -353,6 +368,40 @@ assert n2["id"] == f"{banks}.0", n2
 c.call("undo")
 assert c.call("read_table", table="data.maps.banks", start=0, count=1)["element_count"] == banks
 
+# --- map details: overlap checks, NPC/sign messages, warp renumbering, labeled sheets, map types
+c.call("connect_maps", expect_error=True, map="3.0", direction="north", to_map="3.66")  # Route 1 already fills Pallet's north edge
+c.call("connect_maps", expect_error=True, map="3.66", direction="south", to_map="3.0", offset=40)  # wouldn't touch the edge
+a = c.call("add_map_event", map=n["id"], kind="npc", x=6, y=6, fields={"graphics": "5"}, message="Hello from\nROUTE 22!")
+talk = c.call("decompile_script", address=a["event"]["script"].strip("<>"))["script"]
+assert "faceplayer" in talk and "Hello from" in talk, talk
+sg = c.call("add_map_event", map=n["id"], kind="sign", x=8, y=6, message="ROUTE 22")
+assert "msgbox.sign" in c.call("decompile_script", address=sg["event"]["arg"].strip("<>"))["script"]
+c.call("add_map_event", expect_error=True, map=n["id"], kind="warp", x=1, y=1, message="no")
+c.call("undo"); c.call("undo")
+r = c.call("remove_map_event", map="3.0", kind="warp", index=0)  # the player's house door
+assert any(x.startswith("4.2 warp") for x in r["warps_renumbered"]) and r["warps_now_leading_nowhere"], r
+c.call("undo")
+assert [w["warpID"] for w in c.call("map_events", map="4.2")["events"]["warps"]["items"]] == [1, 1, 1]
+assert [m["type"] for m in c.call("find_map", name="pallet town")["maps"]] == ["town", "indoor", "indoor", "indoor", "indoor"]
+info, png = c.call_image("view_overworld_sprites", first=0, count=16)
+assert info["shown"] == "0-15 of 152" and png_util.size(png)[0] > 0, info
+# the sign script HMA hasn't formatted yet still shows its text inline
+assert "OAK POK" in c.call("decompile_script", address="165838")["script"]
+# tilemaps save indexed (all their palette pages) and re-import as a no-op
+c.call_image("view_image", address="graphics.titlescreen.copyright.tilemap", save_to=os.path.join(work, "tilemap.png"))
+assert png_util.read(os.path.join(work, "tilemap.png"))[2] == 3
+r, _ = c.call_image("import_image", address="graphics.titlescreen.copyright.tilemap", file=os.path.join(work, "tilemap.png"))
+assert r["changed"] is False, r
+# Fly and the Town Map (kept for the save round trip)
+fly = c.call("add_fly_spot", map=n["id"], x=5, y=5)
+assert fly["region"] == "ROUTE 22", fly
+assert "moved" in c.call("add_fly_spot", map=n["id"], x=7, y=7)["note"]
+c.call("add_fly_spot", expect_error=True, map="4.1", x=1, y=1)  # PALLET TOWN already flies to 3.0
+assert c.call("read_town_map")["regions"][0] == "kanto"
+c.call("paint_town_map", region="kanto", x=1, y=8, name="ROUTE 22")
+assert c.call("read_town_map", region="kanto")["rows"][8].split()[1] == "034"
+c.call("paint_town_map", expect_error=True, region="kanto", x=21, y=8, width=2, name="ROUTE 22")
+
 # --- save round-trip: reopen and check every edit stuck, and the metadata kept our anchor
 saved = c.call("save")
 assert saved["backup"] and os.path.exists(saved["backup"]), saved
@@ -365,6 +414,8 @@ assert c.call("resolve", target="test.hello")["run"]["kind"] == "text"
 assert c.call("map_events", map=n["id"])["name"] == "ROUTE 22"  # the new map, its warp and its connection survive the reopen
 assert len(c.call("map_events", map=n["id"])["events"]["warps"]["items"]) == 1
 assert any(x["to"].startswith(n["id"]) for x in c.call("map_events", map="3.0")["connections"]["items"])
+assert c.call("read_table", table="data.maps.fly.spawn", start=20, count=1)["rows"][0]["x"] == 7  # the fly spot survives too
+assert c.call("read_town_map", region="kanto")["rows"][8].split()[1] == "034"
 # the backup must still be the untouched original
 with open(source_rom, "rb") as a, open(saved["backup"], "rb") as b:
     assert a.read() == b.read(), "backup differs from the original ROM"

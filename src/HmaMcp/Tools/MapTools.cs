@@ -12,7 +12,7 @@ namespace HmaMcp.Tools;
 public static class MapTools {
    const string Banks = "data.maps.banks";
 
-   [McpServerTool(Name = "find_map", ReadOnly = true), Description("Find maps by name (e.g. 'PALLET TOWN', 'route 1', 'viridian'). Returns each map's bank.map id and header address. Many indoor maps share their town's name. Pass the id to map_events.")]
+   [McpServerTool(Name = "find_map", ReadOnly = true), Description("Find maps by name (e.g. 'PALLET TOWN', 'route 1', 'viridian'). Returns each map's bank.map id and header address. Many indoor maps share their town's name; type (town, route, indoor, ...) tells them apart. Pass the id to map_events.")]
    public static string FindMap(RomSessions sessions,
       [Description("Part of the map's name (case-insensitive); empty lists every map")] string name = "",
       [Description("Max results")] int limit = 100) => sessions.With(s => {
@@ -24,7 +24,7 @@ public static class MapTools {
       if (matches.Count == 0) throw new McpException($"No map named like '{name}'. Call find_map with an empty name to list them all.");
       return Json.Of(new {
          total = matches.Count,
-         maps = matches.Take(Math.Clamp(limit, 1, 1000)).Select(m => new { id = m.Id, name = m.Name, header = m.Header.ToAddress() }),
+         maps = matches.Take(Math.Clamp(limit, 1, 1000)).Select(m => new { id = m.Id, name = m.Name, type = MapType(s, m), header = m.Header.ToAddress() }),
       });
    });
 
@@ -98,11 +98,21 @@ public static class MapTools {
       return target != null ? $"{target.Id} {target.Name}" : $"{bank}.{map}";
    }
 
+   static readonly string[] MapTypes = { "none", "town", "city", "route", "underground", "underwater", "ocean route", "unknown", "indoor", "secret base" };
+
+   /// <summary>The header's map type as a word (indoor maps share their town's name, so this tells them apart).</summary>
+   static string? MapType(RomSession s, MapRef m) {
+      var header = TableAt(s, m.Header);
+      if (header == null || !Fields(header).Any(f => f.Key == "mapType")) return null;
+      var v = Convert.ToInt32(Value(s, header, 0, "mapType"));
+      return v >= 0 && v < MapTypes.Length ? MapTypes[v] : v.ToString();
+   }
+
    internal sealed record MapRef(int Bank, int Map, string Name, int Header) {
       public string Id => $"{Bank}.{Map}";
    }
 
-   static List<MapRef> AllMaps(RomSession s) {
+   internal static List<MapRef> AllMaps(RomSession s) {
       var model = s.Model;
       var banks = GetTable(s, Banks);
       var result = new List<MapRef>();

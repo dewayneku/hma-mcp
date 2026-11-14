@@ -41,6 +41,50 @@ public static class GraphicsTools {
       return SpriteImage(s, tool, scale, save_to);
    });
 
+   [McpServerTool(Name = "view_overworld_sprites", ReadOnly = true), Description(
+      "A sheet of overworld (NPC) sprites, first frame each, with each sprite's number printed under it: the same number as an NPC's " +
+      "'graphics' field in map_events / add_map_event. Use it to pick how a new NPC looks.")]
+   public static CallToolResult ViewOverworldSprites(RomSessions sessions,
+      [Description("First sprite number")] int first = 0,
+      [Description("How many to show (up to 80)")] int count = 40,
+      [Description("Zoom 1-4")] int scale = 2) => sessions.With(s => {
+      const string table = "graphics.overworld.sprites";
+      var run = DataTools.GetTable(s, table);
+      if (first < 0 || first >= run.ElementCount) throw new McpException($"first must be 0 to {run.ElementCount - 1}.");
+      int last = Math.Min(run.ElementCount, first + Math.Clamp(count, 1, 80));
+      var sprites = new List<(int index, short[]? pixels, int w, int h)>();
+      for (int i = first; i < last; i++) {
+         try {
+            var tool = Prepare(s, ResolveGraphic(s, table, i.ToString()), 0, "", 0);
+            sprites.Add((i, tool.PixelData?.ToArray(), tool.PixelWidth, tool.PixelHeight));
+         } catch (McpException) {
+            sprites.Add((i, null, 0, 0));
+         }
+      }
+      int cellW = Math.Clamp(sprites.Max(x => x.w), 16, 64) + 4, spriteH = Math.Clamp(sprites.Max(x => x.h), 16, 64);
+      int cellH = spriteH + Labels.Height + 3, perRow = 8, rows = (sprites.Count + perRow - 1) / perRow;
+      int width = perRow * cellW, height = rows * cellH;
+      var pixels = Enumerable.Repeat(Png.FromRgb(64, 64, 72), width * height).ToArray();
+      for (int n = 0; n < sprites.Count; n++) {
+         var (index, px, w, h) = sprites[n];
+         int ox = (n % perRow) * cellW, oy = (n / perRow) * cellH;
+         if (px != null) {
+            int dx = ox + (cellW - Math.Min(w, cellW)) / 2, dy = oy + 1 + Math.Max(0, spriteH - h);
+            for (int y = 0; y < Math.Min(h, spriteH); y++)
+               for (int x = 0; x < Math.Min(w, cellW); x++)
+                  pixels[(dy + y) * width + dx + x] = px[y * w + x];
+         }
+         Labels.Draw(pixels, width, ox + 2, oy + spriteH + 2, index.ToString());
+      }
+      var info = new Dictionary<string, object?> {
+         ["table"] = table,
+         ["shown"] = $"{first}-{last - 1} of {run.ElementCount}",
+         ["layout"] = "8 per row; the number under each sprite is its graphics number (decimal)",
+         ["missing"] = sprites.Where(x => x.pixels == null).Select(x => x.index).ToList() is { Count: > 0 } miss ? miss : null,
+      };
+      return Result(info, pixels, width, height, Math.Clamp(scale, 1, 4), "");
+   });
+
    // ---------- palettes ----------
 
    [McpServerTool(Name = "read_palette", ReadOnly = true), Description("A palette's colors as #RRGGBB (GBA colors have 5 bits per channel, so each value is a multiple of 8 plus its top bits). Color 0 is transparent for sprites. Also lists the graphics that use it.")]
@@ -121,9 +165,12 @@ public static class GraphicsTools {
       var spriteRun = (ISpriteRun)s.Model.GetNextRun(start);
       var paletteForPage = s.Model.GetNextRun(tool.PaletteAddress) is IPaletteRun pp && pp.Start == tool.PaletteAddress
          ? (spriteRun.SpriteFormat.BitsPerPixel == 8 ? pp.AllColors(s.Model) : pp.GetPalette(s.Model, tool.PalettePage)) : null;
-      if (image.Width == tool.PixelWidth && image.Height == tool.PixelHeight && spriteRun is not ITilemapRun) {
+      if (image.Width == tool.PixelWidth && image.Height == tool.PixelHeight) {
          bool unchanged = false;
-         if (image.Indices != null && image.Palette != null && paletteForPage != null
+         if (spriteRun is ITilemapRun) {
+            // tilemap pixels span several palette pages: compare what's drawn
+            unchanged = tool.PixelData != null && tool.PixelData.SequenceEqual(image.Pixels);
+         } else if (image.Indices != null && image.Palette != null && paletteForPage != null
             && image.Palette.Length <= paletteForPage.Count && image.Palette.SequenceEqual(paletteForPage.Take(image.Palette.Length))) {
             var current = spriteRun.GetPixels(s.Model, tool.SpritePage, -1);
             unchanged = current != null && current.Cast<int>().SequenceEqual(image.Indices.Cast<int>());
@@ -349,10 +396,16 @@ public static class GraphicsTools {
 
       // Save an indexed PNG when the pixels are plain indices into one palette page, so a round trip keeps exact indices.
       byte[]? indexed = null;
-      if (!string.IsNullOrWhiteSpace(saveTo) && pal != null && run is not ITilemapRun && run.SpriteFormat.BitsPerPixel is 4 or 8) {
+      if (!string.IsNullOrWhiteSpace(saveTo) && pal != null && run.SpriteFormat.BitsPerPixel is 4 or 8) {
          var indices = run.GetPixels(s.Model, tool.SpritePage, -1);
-         var colors = run.SpriteFormat.BitsPerPixel == 8 ? pal.AllColors(s.Model) : pal.GetPalette(s.Model, tool.PalettePage);
-         if (indices != null && indices.Cast<int>().All(i => i >= 0 && i < colors.Count)) indexed = Png.EncodeIndexed(indices, colors);
+         // tilemap pixels carry their palette page (page*16 + color): index into all the pages, after any blank leading pages
+         bool allPages = run is ITilemapRun || run.SpriteFormat.BitsPerPixel == 8;
+         var colors = allPages ? pal.AllColors(s.Model) : pal.GetPalette(s.Model, tool.PalettePage);
+         int shift = run is ITilemapRun ? pal.PaletteFormat.InitialBlankPages * 16 : 0;
+         if (indices != null && shift > 0)
+            for (int x = 0; x < indices.GetLength(0); x++)
+               for (int y = 0; y < indices.GetLength(1); y++) indices[x, y] -= shift;
+         if (indices != null && colors.Count <= 256 && indices.Cast<int>().All(i => i >= 0 && i < colors.Count)) indexed = Png.EncodeIndexed(indices, colors);
       }
       int zoom = scale > 0 ? Math.Clamp(scale, 1, 8) : Math.Clamp(256 / Math.Max(width, height), 1, 4);
       return Result(info, pixels, width, height, zoom, saveTo, indexed);

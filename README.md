@@ -79,7 +79,7 @@ cd hma-mcp
 dotnet publish src/HmaMcp -c Release -o ~/.local/share/hma-mcp
 ```
 
-On Windows, `-o %LOCALAPPDATA%\hma-mcp` is a good spot. Publish outside the repo: an MCP client keeps the server running, and on Windows a running `.exe` can't be overwritten, so pointing a client at `bin/` breaks your next build. To update, pull, close your MCP client (or start a new session), and run the same `publish` command again.
+On Windows, `-o %LOCALAPPDATA%\hma-mcp` is a good spot, or run `scripts/install.ps1`, which also works while an MCP client is using the server. Publish outside the repo: an MCP client keeps the server running, and on Windows a running `.exe` can't be overwritten, so pointing a client at `bin/` breaks your next build. To update, pull, close your MCP client (or start a new session), and run the same `publish` command again.
 </details>
 
 ### 2. Connect your client
@@ -129,6 +129,8 @@ Then just ask, for example:
 | 🧱 | `read_map_blocks` · `paint_map_blocks` · `view_blockset` | A map's blocks and movement permissions as hex grids; paint blocks (copy a building from one spot to another); see the tiles a map can use |
 | 🚪 | `add_map_event` · `remove_map_event` · `resize_map` | Add or remove NPCs, warps, triggers and signs; grow or shrink a map (events and connections stay in place) |
 | 🆕 | `create_map` · `connect_maps` · `disconnect_maps` | New maps modeled on an existing one (its tilesets, music, weather); join or separate neighboring maps, both sides at once |
+| 🕊️ | `add_fly_spot` · `read_town_map` · `paint_town_map` | Make a map a Fly destination; put it on the Town Map |
+| 🧍 | `view_overworld_sprites` | A labeled sheet of NPC sprites, to pick one by number |
 | 💬 | `read_text` · `write_text` | Game text at an address (a script's message, say); longer text is moved and every pointer to it updated |
 | 📜 | `decompile_script` · `compile_script` | Event, battle, animation and trainer-AI scripts, with automatic repointing |
 | ⌨️ | `hma_edit` | Type into HMA's hex view using its full edit language (`^anchor`, `<pointer>`, `"text"`) |
@@ -144,7 +146,7 @@ HMA supports FireRed, LeafGreen, Emerald, Ruby and Sapphire, and hacks of them. 
 
 ```mermaid
 flowchart LR
-    A["Claude / any MCP client"] <-- "MCP over stdio" --> B["hma-mcp<br/>(35 tools)"]
+    A["Claude / any MCP client"] <-- "MCP over stdio" --> B["hma-mcp<br/>(39 tools)"]
     B --> C["HexManiac.Core<br/>(HMA's engine, built from source)"]
     C <--> D[("your ROM .gba<br/>+ HMA .toml metadata")]
 ```

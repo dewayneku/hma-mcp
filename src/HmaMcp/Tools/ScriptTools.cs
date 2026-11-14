@@ -18,6 +18,15 @@ public static class ScriptTools {
       [Description(KindHelp)] string kind = "event") => sessions.With(s => {
       var start = s.ResolveAddress(address);
       var parser = Parser(s, kind);
+      // HMA shows a text inline only once it has marked that address as text. Its editor formats a script when it
+      // opens it; do the same (format only, no data change, not an undo step) when a script is known to start here, or something points here.
+      if (kind.Equals("event", StringComparison.OrdinalIgnoreCase) && s.Model.GetNextRun(start) is { } known && known.Start == start && (known is XSERun || (known is NoInfoRun && known.PointerSources?.Count > 0))) {
+         try {
+            using (ModelCacheScope.CreateScope(s.Model)) parser.FormatScript<XSERun>(new NoDataChangeDeltaModel(), s.Model, start);
+         } catch (Exception) {
+            // formatting is only a display aid
+         }
+      }
       using (ModelCacheScope.CreateScope(s.Model)) {
          var length = parser.FindLength(s.Model, start);
          int sections = 0;
@@ -47,6 +56,18 @@ public static class ScriptTools {
          };
       }
    });
+
+   /// <summary>Compile a new event script into free space and return its address (one undo step is the caller's).</summary>
+   internal static int CompileNew(RomSession s, string script) {
+      script = script.Replace("\r\n", "\n").Replace('\r', '\n').Replace("\n", "\r\n");
+      var start = s.Model.FindFreeSpace(s.Model.FreeSpaceStart, 0x40);
+      if (start < 0) throw new McpException("No free space for the new script.");
+      var parser = Parser(s, "event");
+      var errors = new List<string>();
+      void OnError(object? sender, ScriptErrorInfo e) => errors.Add(e.Message);
+      using (ModelCacheScope.CreateScope(s.Model)) Compile<XSERun>(s, parser, start, script, errors, OnError);
+      return start;
+   }
 
    /// <summary>Mirrors HexManiac.Core CodeTool.CompileScriptChanges, minus the editor/selection bookkeeping.</summary>
    static string Compile<TRun>(RomSession s, ScriptParser parser, int start, string script, List<string> errors, EventHandler<ScriptErrorInfo> onError)

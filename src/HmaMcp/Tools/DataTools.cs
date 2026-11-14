@@ -115,12 +115,13 @@ public static class DataTools {
       return Json.Of(new { table = s.Anchor(run.Start), element_count = run.ElementCount, rows });
    });
 
-   [McpServerTool(Name = "write_table_field", Destructive = true), Description("Set one field of one table row. Values are checked against the field's size. Integers: decimal or 0x hex. Enums: a name (e.g. 'FIRE', 'THUNDERBOLT') or number. Text: text (fixed-length text must fit). Packed (tuple) fields: 'part=value, part=value' or a JSON object. Flag sets (bits): 'A, B' to replace, '+A, -B' to add/remove, or 0x hex. Pointers: '@ABCDEF' to repoint, or the full text form read_table shows (text, learnsets, trainer teams, nested tables); HMA repoints the data if it grows. Returns the old and new value, plus changed_lines if HMA stored nested text differently from what was written.")]
+   [McpServerTool(Name = "write_table_field", Destructive = true), Description("Set one field of one table row. Values are checked against the field's size. Integers: decimal or 0x hex. Enums: a name (e.g. 'FIRE', 'THUNDERBOLT') or number. Text: text (fixed-length text must fit). Packed (tuple) fields: 'part=value, part=value' or a JSON object. Flag sets (bits): 'A, B' to replace, '+A, -B' to add/remove, or 0x hex. Pointers: '@ABCDEF' to repoint, or the full text form read_table shows (text, learnsets, trainer teams, nested tables); HMA repoints the data if it grows. Returns the old and new value, and refuses (undoing the write) if HMA would store nested text differently from what was written, e.g. a misspelled move name, unless accept_changes is true.")]
    public static string WriteTableField(RomSessions sessions,
       [Description("Table anchor or address")] string table,
       [Description("Row index, or the row's name for named tables (e.g. 'CHARMANDER')")] string row,
       [Description("Field name from describe_table")] string field,
-      [Description("New value")] string value) => sessions.Edit(s => {
+      [Description("New value")] string value,
+      [Description("Nested text only (learnsets, teams, lists): keep the write even if HMA stored some lines differently (unknown names become a default). Default false: such a write is undone and the lines are listed.")] bool accept_changes = false) => sessions.Edit(s => {
       var run = GetTable(s, table);
       var anchor = s.Anchor(run.Start);
       var index = ResolveRow(run, row);
@@ -147,10 +148,16 @@ public static class DataTools {
             if (w?.key != g?.key) changedLines.Add(new { line = i + 1, wrote = w?.text, stored = g?.text });
          }
          if (changedLines.Count == 0) changedLines = null;
+         if (changedLines != null && !accept_changes) {
+            var nl = Environment.NewLine;
+            var lines = string.Join(nl, changedLines.Take(10).Select(l => System.Text.Json.JsonSerializer.Serialize(l)));
+            throw new McpException("Nothing was written: HMA would have stored some lines differently from what you wrote (usually an unknown or misspelled name, or a name with spaces that needs quotes):" + nl + lines +
+               nl + "Fix those lines, or pass accept_changes=true to keep HMA's version.");
+         }
       }
       return Json.Of(new {
          table = anchor, row = index, field, before, after = afterValue,
-         warning = changedLines != null ? "HMA stored some lines differently from what was written (unknown names become a default). Check them; call undo if this is wrong." : null,
+         warning = changedLines != null ? "Kept with accept_changes: HMA stored some lines differently from what was written. Check them; call undo if this is wrong." : null,
          changed_lines = changedLines?.Take(20),
       });
    });
@@ -402,8 +409,17 @@ public static class DataTools {
       }
 
       var destination = model.ReadPointer(address);
-      if (destination < 0 || destination >= model.Count)
-         throw new McpException($"'{f.Key}' is a null pointer, so there is no data to edit. Point it at existing data with '@ABCDEF' first, or create the data with hma_edit.");
+      if (destination < 0 || destination >= model.Count) {
+         // empty pointer: create new data of the right format in free space first, like the table tool's "Create New" button
+         var errors = new List<string>();
+         void OnError(object? sender, string e) => errors.Add(e);
+         s.ViewPort.OnError += OnError;
+         try { s.ViewPort.RepointToNewCopy(address); } finally { s.ViewPort.OnError -= OnError; }
+         destination = model.ReadPointer(address);
+         if (destination < 0 || destination >= model.Count)
+            throw new McpException($"'{f.Key}' is a null pointer and HMA couldn't create new data for it{(errors.Count > 0 ? ": " + string.Join(" ", errors) : ".")} Point it at existing data with '@ABCDEF', or create the data with hma_edit.");
+         if (text.Equals("new", StringComparison.OrdinalIgnoreCase)) return;
+      }
       var destinationRun = model.GetNextRun(destination);
       if (destinationRun.Start != destination) destinationRun = null;
 

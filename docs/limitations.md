@@ -29,51 +29,38 @@ Emerald (U) (BPEE0), 2026-11-10, with `tests/smoke_emerald.py`: Treecko's type a
 ## Open
 
 ### Maps: what's not covered yet
-- **Overworld sprites show as numbers** (`graphics: "23"`), because HMA's sprite list has no names. `view_image` on `graphics.overworld.sprites` with that row shows which one it is.
-- **Indoor maps share their town's name**, so `PALLET TOWN` matches 5 maps; tools then ask for an id (`3.0` is the town itself).
-- **Block and tileset editing isn't covered.** You can place any existing block, but not change what a block looks like or its behavior (grass, water, door).
-- **New maps aren't in the Town Map or fly list.** `create_map` gives the map a region name, but placing it on the Town Map or adding a fly spot isn't covered.
-- **Connections aren't checked for overlaps.** `connect_maps` takes the offset you give (centered by default); look at both maps with `render_map`.
-- **Removing events shifts the later ones down.** Warps on other maps that lead here by warp number, and scripts that refer to NPCs by local id, aren't updated. `remove_map_event` warns about this.
-- **A new event's script must already exist.** Write it first (e.g. `compile_script` or `hma_edit` into free space) and pass its address as `script`/`arg`.
-
-### Nested data is one more call away
-**Tried:** reading Route 1's grass encounter list.
-**What happens:** `read_table` shows a nested table as `list : <3C8E60>`; the slots themselves need `read_table table=3C8E60`. Learnsets, trainer teams and text are shown inline.
-**Workaround:** as described. Writing works at either level.
-
-### Null pointers can't be filled in by `write_table_field`
-**Tried:** giving Route 1 a surf table (`surf` is `null`).
-**What happens:** a clear error: there's no data to edit.
-**Workaround:** create the data with `hma_edit` (in free space from `find_free_space`) and point the field at it with `@ABCDEF`. This needs HMA's edit syntax for the inner format; there's no helper yet.
-
-### Typos in nested text are stored as something else
-**Tried:** a learnset line `(NOTAMOVE 5)`.
-**What happens:** HMA parses nested text leniently (unknown names fuzzy-match or become a default), so it stored `(TACKLE 5)`. hma-mcp can't reject it up front, but it now compares what it wrote with what it reads back and returns a `warning` and `changed_lines`.
-**Workaround:** check `changed_lines` and `undo` if needed. Names with spaces must be quoted, exactly as `read_table` shows them (`("VINE WHIP" 10)`).
+- **Block and tileset editing isn't covered yet** (in progress): you can place any existing block, but not change what a block looks like or its behavior.
+- **Indoor maps share their town's name**, as in the game's data; `find_map` shows each map's `type` (town, route, indoor, ...) to tell them apart.
+- **New region names can't be added.** The region name list (`data.maps.names`) has a fixed size that the game's code relies on. A new map can use an existing name; for its own Fly spot and Town Map squares, use a name no other Fly spot uses.
+- **Fly needs the visit flag.** `add_fly_spot` adds the destination; in the game it appears in the Fly menu after the player has been there.
+- **Nested data is one call deeper.** `read_table` shows a nested table as `list : <3C8E60>`; read or write its rows with that address as the table. An empty pointer gets new data with `write_table_field ... value="new"`.
 
 ### Inline `<auto>` data after a script
 **Tried:** recompiling the Pallet Town NPC script, whose two movements are stored right after it (decompile shows them as `<auto>`).
-**What happens:** keeping them as `<auto>` is safe: they're written back in place. Replacing *both* with their real addresses also works. Replacing only one makes HMA place the remaining `<auto>` block on top of it, which corrupts the movement. A brand-new `<auto>` text placed right after a script is not marked as text, so `decompile_script` shows its pointer without the text.
-**Workaround:** leave `<auto>` as decompiled. To read or edit such a text, use `read_text`/`write_text` at the address the pointer shows.
-
-### Some script texts aren't shown inline
-**Tried:** decompiling the Pallet Town sign (`165838`).
-**What happens:** `msgbox.default <17D866>` with no text block, because HMA hadn't recognized that address as text yet. After any compile of that script it is shown.
-**Workaround:** `read_text` and `write_text` at that address. They find the pointer by searching the ROM when HMA doesn't know it, so a longer text can still be moved safely.
+**What happens:** keeping them as `<auto>` is safe: they're written back in place. Replacing *both* with their real addresses also works. Replacing only one makes HMA place the remaining `<auto>` block on top of it, which corrupts the movement (HMA upstream note #10).
+**Workaround:** leave `<auto>` blocks as decompiled, or replace all of them.
 
 ### Graphics: what's not covered yet
-- **Sprite size can't change.** An imported image must match the graphic's size (or all its pages side by side / stacked), as in HMA.
+- **Sprite sizes are fixed by the game.** An imported image must match the graphic's size (or all its pages side by side / stacked); Pokémon sprites are always 64x64, for example.
 - **Imports may move compressed graphics.** HMA's LZ compressor packs a little less tightly than the original game's, so even a small edit to a compressed sprite usually moves it to free space (pointers are updated; the result says `sprite_moved_from`). Importing an image identical to what's there writes nothing.
-- **Tilemaps export as plain color images**, not indexed, since their tiles use several palette pages.
 
 ### One ROM at a time
-`open_rom` replaces the open ROM (and refuses if there are unsaved changes).
+One ROM is open per session; `open_rom` on another asks you to save or discard first. Copying data between two ROMs isn't covered.
 
 ### Updating the installed server while it's running
-`dotnet publish -o %LOCALAPPDATA%\hma-mcp` fails with "file is locked" while any Claude session uses the server. Workaround: publish to a staging folder, rename the locked `hma-mcp.exe`, `hma-mcp.dll` and `HexManiac.Core.dll` out of the way (Windows allows renaming loaded files), and copy the new files in. Running sessions keep the old version; new sessions get the new one.
+Windows won't overwrite a running server. `scripts/install.ps1` builds and installs anyway: it sets the locked files aside and copies the new build in. Running sessions keep the old version until they restart.
 
 ## Fixed
+
+- **Connections could overlap.** `connect_maps` now refuses a neighbor that would overlap one already on that side, or that wouldn't touch the edge, on both maps.
+- **A new NPC or sign needed its script written first.** `add_map_event` takes `message` and writes a standard talk script.
+- **Removing a warp broke warps leading here.** `remove_map_event` renumbers warps on every map that lead to later warps of this map, and lists any that led to the removed one. NPCs keep their own local ids, so removing one doesn't shift the others.
+- **Overworld sprites were only numbers.** `view_overworld_sprites` shows a labeled sheet; `view_blockset` labels each block's id.
+- **New maps couldn't be Fly destinations or put on the Town Map.** New `add_fly_spot`, `read_town_map`, `paint_town_map`.
+- **Tilemaps exported as plain colors.** They now save as indexed PNGs with all their palette pages, and an unchanged tilemap imports as a no-op.
+- **Empty pointers couldn't be filled.** `write_table_field` creates new data of the right format (as HMA's table tool "Create New" does), then writes the value.
+- **Typos in nested text were stored as something else.** Such a write is now undone and refused, listing the lines HMA would change, unless `accept_changes=true`.
+- **Some script texts weren't shown inline.** `decompile_script` formats the script first, as HMA's editor does when it opens one (format only, not an undo step).
 
 All of these have checks in `tests/smoke.py`.
 

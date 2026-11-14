@@ -22,7 +22,7 @@ Requires the .NET 8 SDK. HMA's core is built from the `external/HexManiacAdvance
 |---|---|
 | `src/HmaMcp/Program.cs` | Server startup (stdio transport) |
 | `src/HmaMcp/RomSessions.cs` | The open ROM, address/anchor parsing, undo grouping |
-| `src/HmaMcp/Tools/` | The MCP tools: `RomTools`, `DataTools`, `ScriptTools`, `MapTools`, `TextTools`, `GraphicsTools`, `MapEditTools` |
+| `src/HmaMcp/Tools/` | The MCP tools: `RomTools`, `DataTools`, `ScriptTools`, `MapTools`, `TextTools`, `GraphicsTools`, `MapEditTools`, `WorldMapTools` |
 | `src/HmaMcp/Png.cs` | PNG reading/writing and color conversion for the graphics tools |
 | `src/HexManiac.Core.Build/` | Builds HMA's core library from the submodule |
 | `tests/smoke.py` | End-to-end test over real MCP stdio |
